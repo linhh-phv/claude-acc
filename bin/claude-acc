@@ -26,7 +26,7 @@ c_dim=$'\033[2m'; c_b=$'\033[1m'; c_r=$'\033[31m'; c_g=$'\033[32m'; c_y=$'\033[3
 if [[ ! -t 1 ]]; then c_dim=; c_b=; c_r=; c_g=; c_y=; c_0=; fi
 
 die()  { printf '%sloi:%s %s\n' "$c_r" "$c_0" "$*" >&2; exit 1; }
-info() { printf '%s\n' "$*" >&2; }
+info() { printf '%b\n' "$*" >&2; }
 
 [[ "$(uname -s)" == "Darwin" ]] || die "script nay chi chay tren macOS (dung \`security\` cua Keychain)."
 command -v claude >/dev/null 2>&1 || die "khong tim thay \`claude\` trong PATH."
@@ -96,39 +96,37 @@ mk_browser_wrapper() {
   if [[ "$app" == "__clip__" ]]; then
     cat > "$f" <<'W'
 #!/bin/sh
-# In ra STDERR: stdout dang bi capture_setup_token bat de lay token,
-# nhac nhu o stdout thi nguoi dung khong nhin thay.
+printf '%s\n' "$1" >&2
 printf '%s' "$1" | pbcopy 2>/dev/null
-printf '\n>>> URL duyet DA COPY VAO CLIPBOARD.\n>>> Mo cua so RIENG TU (Private/Incognito), dan Cmd+V, dang nhap acc can them, roi Authorize.\n\n' >&2
+printf '\n>>> URL tren DA COPY VAO CLIPBOARD.\n>>> Mo cua so RIENG TU (Private/Incognito), dan Cmd+V, dang nhap acc can them, roi Authorize.\n\n' >&2
 W
   else
-    printf '#!/bin/sh\nexec open -a %q "$1"\n' "$app" > "$f"
+    # Luon in ca URL ra stderr truoc khi tu mo app: `open -a` mo dung PROGRAM
+    # nhung khong chon duoc PROFILE (vd Chrome co nhieu profile) — neu no mo
+    # nham profile, nguoi dung van co URL de tu dan sang dung profile/cua so.
+    local q_app; q_app="$(printf '%q' "$app")"
+    cat > "$f" <<EOF
+#!/bin/sh
+printf '\nNeu $app khong tu mo dung acc dang can, dan link nay vao dung profile/cua so:\n%s\n\n' "\$1" >&2
+open -a $q_app "\$1"
+EOF
   fi
   chmod +x "$f"
   printf '%s' "$f"
-}
-
-# Chay `claude setup-token` va BAT token thang tu stdout — nguoi dung khong
-# phai copy/paste gi. Da kiem chung: truoc khi Authorize no khong in gi ra
-# stdout, va token la thu duy nhat di ra stdout sau do. stderr tha ve terminal
-# de nguoi dung van thay tien trinh.
-capture_setup_token() {
-  local w="$1" out=""
-  if [[ -n "$w" ]]; then
-    out="$(BROWSER="$w" claude setup-token </dev/tty 2>/dev/tty)" || true
-  else
-    out="$(claude setup-token </dev/tty 2>/dev/tty)" || true
-  fi
-  printf '%s' "$out" | grep -m1 -o 'sk-ant-[A-Za-z0-9._-]*' || true
 }
 
 # Doc token tu terminal. Co y KHONG dung `read -s`: token dai, an het ky tu
 # thi khong biet dan duoc hay chua. Bo trong + Enter thi lay tu clipboard.
 read_token() {
   local name="$1" raw=""
-  printf '%sToken cho '\''%s'\''%s — dan vao roi Enter, hoac chi Enter de lay tu clipboard:\n> ' \
+  printf '%sToken cho '\''%s'\''%s — dan vao roi Enter (ky tu se bi an), hoac chi Enter de lay tu clipboard:\n> ' \
     "$c_b" "$name" "$c_0" >&2
-  IFS= read -r raw </dev/tty || true
+  # Dung `read -s`: token khong bao gio duoc echo ra man hinh/scrollback
+  # (tranh lo qua ghi hinh terminal, tmux log, chia se man hinh). De bu lai
+  # viec khong thay minh go gi, in ngay ban xem truoc da che (prefix/suffix/
+  # do dai) sau khi doc xong — cho ca truong hop go tay lan lay tu clipboard.
+  IFS= read -rs raw </dev/tty || true
+  printf '\n' >&2
   raw="$(trim "$raw")"
 
   if [[ -z "$raw" ]] && command -v pbpaste >/dev/null 2>&1; then
@@ -136,10 +134,10 @@ read_token() {
     # vo dai dong dau tien, nen clipboard con sot code cu la lay nham -> bao
     # loi "khong phai token" du nguoi dung lam dung. Da bo.
     raw="$(trim "$(token_from_clip)")"
-    if [[ -n "$raw" ]]; then
-      printf '%sda lay tu clipboard: %s…%s (%d ky tu)%s\n' \
-        "$c_dim" "${raw:0:14}" "${raw: -4}" "${#raw}" "$c_0" >&2
-    fi
+  fi
+  if [[ -n "$raw" ]]; then
+    printf '%sda nhan: %s…%s (%d ky tu)%s\n' \
+      "$c_dim" "${raw:0:14}" "${raw: -4}" "${#raw}" "$c_0" >&2
   fi
   printf '%s' "$raw"
 }
@@ -151,8 +149,11 @@ read_token() {
 # chmod 600 backup ngay sau khi cp, khong dua vao quyen cua file dich cu.
 backup_settings() {
   [[ -f "$SETTINGS" ]] || return 0
-  cp "$SETTINGS" "$SETTINGS.bak-claude-acc"
-  chmod 600 "$SETTINGS.bak-claude-acc"
+  # `install -m` dat quyen 600 NGAY LUC ghi, khong co khoang ho giua luc file
+  # co du lieu va luc bi sieet quyen (khac voi cp roi chmod sau — neu file
+  # goc dang quyen long, co mot khoang thoi gian token nam trong file doc
+  # duoc boi user khac tren may).
+  install -m 600 "$SETTINGS" "$SETTINGS.bak-claude-acc"
 }
 
 # ---------- commands ------------------------------------------------------
@@ -161,7 +162,10 @@ cmd_add() {
   local name="" browser="" mode="ask" run_setup=1
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --browser)  browser="${2:-}"; [[ -n "$browser" ]] || die "--browser can ten app, vd: --browser \"Brave Browser\""; shift 2 ;;
+      --browser)  browser="${2:-}"
+                  [[ -n "$browser" ]] || die "--browser can ten app, vd: --browser \"Brave Browser\""
+                  [[ "$browser" != -* ]] || die "--browser can ten app, khong phai '$browser' (thieu ten app truoc do?)"
+                  shift 2 ;;
       --url-only) browser="__clip__"; shift ;;
       --clip)     mode="clip"; shift ;;
       --stdin)    mode="stdin"; shift ;;
@@ -192,20 +196,24 @@ cmd_add() {
     cat >&2 <<EOF
 
 ${c_dim}Sau khi ban bam Authorize, trang se tu quay ve localhost va terminal nay
-in ra token dang 'sk-ant-oat01-…'. Khong can dan code o dau ca.${c_0}
+in ra token dang 'sk-ant-oat01-…'. Copy dong do, roi quay lai day.${c_0}
 
 EOF
 
     info "${c_dim}--- claude setup-token ---${c_0}"
-    tok="$(capture_setup_token "$wrapper")"
+    # Co y KHONG bat stdout qua $(...): claude setup-token la giao dien
+    # tuong tac, no can biet stdout la mot terminal that de ve dung. Bat qua
+    # command substitution bien stdout thanh mot pipe — co the khien no cham
+    # man hinh hoac treo, va Ctrl+C không thoat duoc vi tien trinh khong con
+    # nam trong foreground process group binh thuong. Cho chay thang vao
+    # terminal, roi tu nguoi dung copy token dan lai (buoc ben duoi).
+    if [[ -n "$wrapper" ]]; then
+      BROWSER="$wrapper" claude setup-token </dev/tty || true
+    else
+      claude setup-token </dev/tty || true
+    fi
     [[ -n "$wrapper" ]] && rm -f "$wrapper"
     info "${c_dim}--------------------------${c_0}"
-
-    if [[ -n "$tok" ]]; then
-      info "${c_g}✓ da tu bat duoc token${c_0} (${tok:0:14}…${tok: -4}, ${#tok} ky tu) — khong can copy/paste."
-    else
-      info "${c_y}khong bat duoc token tu output cua setup-token.${c_0} Dan tay ben duoi."
-    fi
   fi
 
   # `claude setup-token` la TUI; no co the tra terminal ve trang thai raw
@@ -243,7 +251,13 @@ EOF
   remember "$name"
   info "${c_dim}da luu '$name'. Dang kiem tra bang mot request that…${c_0}"
 
-  if env CLAUDE_CODE_OAUTH_TOKEN="$tok" bash -c "$(declare -f probe); probe" >&2; then
+  # `probe` la ham co san trong chinh script nay, subshell da thua ke duoc —
+  # khong can `bash -c "$(declare -f probe); probe"`. Va export trong subshell
+  # thay vi `env VAR=val cmd`: dung `env` de gan bien tao ra mot tien trinh
+  # rieng ma chinh argv cua no chua token — `ps -ef` cua user khac tren may
+  # doc duoc trong luc lenh chay. export/subshell khong tao tien trinh nao co
+  # token trong argv ca.
+  if ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; probe ) >&2; then
     info "${c_g}✓ '$name' san sang.${c_0} Dung: claude-acc switch $name"
   else
     info "${c_r}✗ token luu roi nhung KHONG goi duoc API.${c_0}"
@@ -269,9 +283,16 @@ cmd_switch() {
 
   backup_settings
 
-  python3 -c '
+  # Token truyen qua bien moi truong CLAUDE_ACC_TOK (khong phai argv) de
+  # khong lo qua `ps` cua user khac tren may — argv cua moi tien trinh la
+  # cong khai (ps -ef), con environ thi khong. File dich duoc tao qua
+  # os.open voi mode 0o600 TUONG MINH roi os.replace (atomic rename) —
+  # khong bao gio co lat file ton tai o quyen long, du la file moi hay de
+  # len file cu.
+  CLAUDE_ACC_TOK="$tok" python3 -c '
 import json,sys,os
-p,name,tok=sys.argv[1],sys.argv[2],sys.argv[3]
+p,name=sys.argv[1],sys.argv[2]
+tok=os.environ.get("CLAUDE_ACC_TOK","")
 d={}
 if os.path.exists(p):
     with open(p) as f: d=json.load(f)          # loi cu phap -> nem, khong ghi de
@@ -282,12 +303,13 @@ else:
     env["CLAUDE_CODE_OAUTH_TOKEN"]=tok; env["CLAUDE_ACC_NAME"]=name
 if env: d["env"]=env
 elif "env" in d: del d["env"]
-with open(p,"w") as f:
+tmp=p+".tmp"
+fd=os.open(tmp, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o600)
+with os.fdopen(fd,"w") as f:
     json.dump(d,f,indent=2,ensure_ascii=False); f.write("\n")
-' "$SETTINGS" "$name" "$tok" \
+os.replace(tmp,p)
+' "$SETTINGS" "$name" \
     || die "khong sua duoc $SETTINGS (file loi cu phap JSON?). Ban goc: $SETTINGS.bak-claude-acc"
-
-  chmod 600 "$SETTINGS"
 
   if [[ "$name" == "main" ]]; then
     info "${c_g}Da chuyen ve 'main'${c_0} (credential Keychain — day du connectors)."
@@ -306,7 +328,10 @@ cmd_login() {
   local browser=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --browser)  browser="${2:-}"; [[ -n "$browser" ]] || die "--browser can ten app."; shift 2 ;;
+      --browser)  browser="${2:-}"
+                  [[ -n "$browser" ]] || die "--browser can ten app."
+                  [[ "$browser" != -* ]] || die "--browser can ten app, khong phai '$browser' (thieu ten app truoc do?)"
+                  shift 2 ;;
       --url-only) browser="__clip__"; shift ;;
       *)          die "dung: claude-acc login [--browser <app>|--url-only]" ;;
     esac
@@ -416,7 +441,14 @@ cmd_run() {
     exec env -u CLAUDE_CODE_OAUTH_TOKEN claude "$@"
   fi
   valid_name "$name"
-  exec env CLAUDE_CODE_OAUTH_TOKEN="$(token_of "$name")" claude "$@"
+  # QUAN TRONG: gan tok o mot dong RIENG truoc khi dung. Neu nhet thang
+  # "$(token_of "$name")" vao lam gia tri cho bien cua `env`, exit code cua
+  # token_of (goi die/exit 1 khi khong co token) bi NUOT MAT — `env ...` van
+  # duoc coi la mot lenh don, thanh cong, va chay `claude` voi token RONG
+  # thay vi dung lai. Tach dong nay de set -e bat duoc loi that.
+  local tok; tok="$(token_of "$name")"
+  export CLAUDE_CODE_OAUTH_TOKEN="$tok"
+  exec claude "$@"
 }
 
 cmd_env() {
@@ -427,7 +459,10 @@ cmd_env() {
     return
   fi
   valid_name "$name"
-  printf 'export CLAUDE_CODE_OAUTH_TOKEN=%q\n' "$(token_of "$name")"
+  # Tach dong: xem giai thich trong cmd_run() — nhet truc tiep vao %q se nuot
+  # mat loi cua token_of, in ra mot dong `export ...=''` nhin nhu hop le.
+  local tok; tok="$(token_of "$name")"
+  printf 'export CLAUDE_CODE_OAUTH_TOKEN=%q\n' "$tok"
 }
 
 cmd_check() {
@@ -437,7 +472,7 @@ cmd_check() {
   if [[ "$name" == "main" ]]; then
     env -u CLAUDE_CODE_OAUTH_TOKEN claude auth status --text
     printf '%sdang thu mot request that…%s\n' "$c_dim" "$c_0" >&2
-    if env -u CLAUDE_CODE_OAUTH_TOKEN bash -c "$(declare -f probe); probe"; then
+    if ( unset CLAUDE_CODE_OAUTH_TOKEN; probe ); then
       printf '%s✓ main dung duoc%s\n' "$c_g" "$c_0"
     else
       printf '%s✗ main KHONG dung duoc%s — chay: claude auth login\n' "$c_r" "$c_0"
@@ -448,9 +483,9 @@ cmd_check() {
 
   valid_name "$name"
   local tok; tok="$(token_of "$name")"
-  env CLAUDE_CODE_OAUTH_TOKEN="$tok" claude auth status --text
+  ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; claude auth status --text )
   printf '%sdang thu mot request that…%s\n' "$c_dim" "$c_0" >&2
-  if env CLAUDE_CODE_OAUTH_TOKEN="$tok" bash -c "$(declare -f probe); probe"; then
+  if ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; probe ); then
     printf '%s✓ %s dung duoc%s\n' "$c_g" "$name" "$c_0"
   else
     printf '%s✗ %s KHONG dung duoc%s — chay lai: claude-acc add %s (chon Y)\n' \
@@ -464,6 +499,7 @@ cmd_uninstall() {
   [[ -s "$LIST" ]] && while IFS= read -r a; do [[ -n "$a" ]] && info "  - token Keychain cua '$a'"; done < "$LIST"
   info "  - $CFG_DIR (danh sach acc phu)"
   [[ -n "$(pinned_acc)" ]] && info "  - bo ghim trong $SETTINGS (dua ve 'main')"
+  [[ -f "$SETTINGS.bak-claude-acc" ]] && info "  - $SETTINGS.bak-claude-acc (ban sao luu, con chua token cu)"
   local self; self="$(command -v claude-acc 2>/dev/null || printf '%s' "$0")"
   info "${c_dim}Sau buoc nay, xoa tay file binh: $self${c_0}"
 
@@ -478,6 +514,10 @@ cmd_uninstall() {
     done < "$LIST"
   fi
   [[ -n "$(pinned_acc)" ]] && cmd_switch main >&2 || true
+  # cmd_switch main o tren TU TAO mot ban backup moi (chua token cua acc vua
+  # bo ghim) truoc khi xoa no o day — khong bo sot buoc nay, neu khong token
+  # cuoi cung van song trong file .bak du nguoi dung tuong da xoa sach.
+  rm -f "$SETTINGS.bak-claude-acc"
   rm -rf "$CFG_DIR"
   info "${c_g}xong.${c_0} Xoa tiep binh claude-acc khoi PATH neu muon go hoan toan."
 }
