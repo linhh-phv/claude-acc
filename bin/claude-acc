@@ -85,11 +85,45 @@ probe() {
 # Lay chuoi 'sk-ant-…' tu clipboard, ke ca khi copy dinh chu xung quanh.
 token_from_clip() {
   command -v pbpaste >/dev/null 2>&1 || return 0
-  pbpaste 2>/dev/null | grep -m1 -o 'sk-ant-[A-Za-z0-9._-]*' || true
+  pbpaste 2>/dev/null | grep -m1 -o 'sk-ant-oat01-[A-Za-z0-9._-]*' || true
 }
 
 # Tao script tam de lam bien BROWSER. Claude Code goi no voi URL la $1
 # (da kiem chung: setup-token co ton trong BROWSER tren macOS).
+
+# Chay `claude setup-token` qua `script` — cong cu chuyen ghi lai phien lam
+# viec cua mot chuong trinh tuong tac MA KHONG lam no mat nhan thuc ve
+# terminal that. Khac voi `$(...)` (da thu truoc do, gay treo vi bien stdout
+# thanh MOT PIPE): `script` cap cho claude MOT PTY THAT, nen no van thay minh
+# dang chay tren terminal binh thuong, con minh thi doc lai duoc noi dung tu
+# file log de tu trich token — khong can nguoi dung tu copy/paste nua.
+#
+# Neu khong co `script`, hoac khong trich duoc token (vd nguoi dung Ctrl+C
+# giua chung), tra ve rong qua bien CAPTURED_TOKEN — cmd_add() se roi xuong
+# hoi token thu cong nhu binh thuong, khong bao gio bi ket chi vi buoc tu
+# dong nay khong thanh cong.
+CAPTURED_TOKEN=""
+run_setup_token_capture() {
+  local wrapper="$1" logf status
+  CAPTURED_TOKEN=""
+
+  if ! command -v script >/dev/null 2>&1; then
+    if [[ -n "$wrapper" ]]; then BROWSER="$wrapper" claude setup-token; else claude setup-token; fi
+    return $?
+  fi
+
+  logf="$(mktemp -t claude-acc-typescript)" || die "khong tao duoc file tam."
+  if [[ -n "$wrapper" ]]; then
+    BROWSER="$wrapper" script -q "$logf" claude setup-token
+  else
+    script -q "$logf" claude setup-token
+  fi
+  status=$?
+  CAPTURED_TOKEN="$(grep -m1 -o 'sk-ant-oat01-[A-Za-z0-9._-]*' "$logf" 2>/dev/null || true)"
+  rm -f "$logf"
+  return $status
+}
+
 mk_browser_wrapper() {
   local app="$1" f
   f="$(mktemp -t claude-acc-browser)" || die "khong tao duoc file tam."
@@ -197,25 +231,27 @@ cmd_add() {
 
     cat >&2 <<EOF
 
-${c_dim}Sau khi ban bam Authorize, trang se tu quay ve localhost va terminal nay
-in ra token dang 'sk-ant-oat01-…'. Copy dong do, roi quay lai day.${c_0}
+${c_dim}Sau khi ban bam Authorize (hoac dan code neu duoc hoi), token se duoc
+tu dong bat lai — khong can copy/paste. Neu vi ly do nao do khong bat duoc,
+ban se duoc hoi dan token thu cong ngay sau day.${c_0}
 
 EOF
 
     info "${c_dim}--- claude setup-token ---${c_0}"
-    # Co y KHONG bat stdout qua $(...): claude setup-token la giao dien
-    # tuong tac, no can biet stdout la mot terminal that de ve dung. Bat qua
-    # command substitution bien stdout thanh mot pipe — co the khien no cham
-    # man hinh hoac treo, va Ctrl+C không thoat duoc vi tien trinh khong con
-    # nam trong foreground process group binh thuong. Cho chay thang vao
-    # terminal, roi tu nguoi dung copy token dan lai (buoc ben duoi).
-    if [[ -n "$wrapper" ]]; then
-      BROWSER="$wrapper" claude setup-token </dev/tty || true
-    else
-      claude setup-token </dev/tty || true
-    fi
+    # Co y KHONG dung `</dev/tty`: da kiem chung thuc te — luong "Paste code
+    # here" cua `claude setup-token` khong nhan phim/paste khi stdin bi mo
+    # lai qua /dev/tty. claude-acc luon duoc goi truc tiep trong mot terminal
+    # that, nen stdin da san la terminal do — mo lai la thua va gay loi nay.
+    run_setup_token_capture "$wrapper" || true
+    tok="$CAPTURED_TOKEN"
     [[ -n "$wrapper" ]] && rm -f "$wrapper"
     info "${c_dim}--------------------------${c_0}"
+
+    if [[ -n "$tok" ]]; then
+      info "${c_g}✓ da tu bat duoc token${c_0} (${tok:0:14}…${tok: -4}, ${#tok} ky tu) — khong can copy/paste."
+    else
+      info "${c_y}khong bat duoc token tu output cua setup-token.${c_0} Dan tay ben duoi."
+    fi
   fi
 
   # `claude setup-token` la TUI; no co the tra terminal ve trang thai raw
@@ -233,7 +269,7 @@ EOF
   fi
   [[ -n "$tok" ]] || die "token rong, huy."
 
-  if [[ "$tok" != sk-ant-* ]]; then
+  if [[ "$tok" != sk-ant-oat01-* ]]; then
     cat >&2 <<EOF
 ${c_r}Day khong phai token.${c_0} Token that bat dau bang 'sk-ant-oat01-'.
 Nhieu kha nang ban dan nham ${c_b}code${c_0} — chuoi ngan browser hien ra. Do la
@@ -346,11 +382,13 @@ cmd_login() {
   [[ -n "$browser" ]] && wrapper="$(mk_browser_wrapper "$browser")"
   [[ -n "$browser" && "$browser" != "__clip__" ]] && info "${c_b}Se duyet trong: $browser${c_0}"
 
+  # Khong dung `</dev/tty`: xem giai thich trong cmd_add() — mo lai stdin qua
+  # /dev/tty lam luong "Paste code here" cua claude khong nhan duoc phim/paste.
   if [[ -n "$wrapper" ]]; then
-    BROWSER="$wrapper" claude auth login </dev/tty || true
+    BROWSER="$wrapper" claude auth login || true
     rm -f "$wrapper"
   else
-    claude auth login </dev/tty || true
+    claude auth login || true
   fi
 
   { stty sane </dev/tty; } >/dev/null 2>&1 || true
