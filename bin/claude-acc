@@ -1,0 +1,546 @@
+#!/usr/bin/env bash
+# claude-acc — quản lý nhiều account Claude Code trên một máy (macOS)
+#
+# Mô hình:
+#   - 1 acc "main"  : đăng nhập bằng `claude auth login`, credential nằm trong
+#                     macOS Keychain. Đây là acc DUY NHẤT có claude.ai
+#                     connectors, Remote Control và /schedule.
+#   - N acc phụ     : mỗi acc một long-lived OAuth token (`claude setup-token`,
+#                     hạn 1 năm), cất trong Keychain dưới service riêng và nạp
+#                     qua biến môi trường CLAUDE_CODE_OAUTH_TOKEN khi chạy,
+#                     hoặc qua khối `env` của ~/.claude/settings.json khi cần
+#                     áp dụng cho cả GUI (Cursor/VS Code).
+#
+# Vì acc phụ không bao giờ ghi vào credential của Claude Code, việc đổi qua lại
+# không làm mất đăng nhập của acc nào — hết bắt login/OTP lại.
+
+set -euo pipefail
+
+VERSION="1.0.0"
+SVC="claude-code-token"
+CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/claude-acc"
+LIST="$CFG_DIR/accounts"
+SETTINGS="$HOME/.claude/settings.json"
+
+c_dim=$'\033[2m'; c_b=$'\033[1m'; c_r=$'\033[31m'; c_g=$'\033[32m'; c_y=$'\033[33m'; c_0=$'\033[0m'
+if [[ ! -t 1 ]]; then c_dim=; c_b=; c_r=; c_g=; c_y=; c_0=; fi
+
+die()  { printf '%sloi:%s %s\n' "$c_r" "$c_0" "$*" >&2; exit 1; }
+info() { printf '%s\n' "$*" >&2; }
+
+[[ "$(uname -s)" == "Darwin" ]] || die "script nay chi chay tren macOS (dung \`security\` cua Keychain)."
+command -v claude >/dev/null 2>&1 || die "khong tim thay \`claude\` trong PATH."
+
+mkdir -p "$CFG_DIR"
+touch "$LIST"
+
+# ---------- helpers -------------------------------------------------------
+
+valid_name() {
+  [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || die "ten acc chi duoc chua chu, so, . _ - (nhan duoc: '$1')"
+  [[ "$1" != "main" ]] || die "'main' la ten danh rieng cho acc dang nhap bang Keychain."
+}
+
+known() { grep -qx -- "$1" "$LIST" 2>/dev/null; }
+
+token_of() {
+  security find-generic-password -s "$SVC" -a "$1" -w 2>/dev/null \
+    || die "chua co token cho '$1'. Chay: claude-acc add $1"
+}
+
+remember() { known "$1" || printf '%s\n' "$1" >> "$LIST"; }
+
+forget() {
+  local tmp; tmp="$(mktemp)"
+  grep -vx -- "$1" "$LIST" > "$tmp" 2>/dev/null || true
+  mv "$tmp" "$LIST"
+}
+
+trim() { printf '%s' "$1" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
+
+pinned_acc() {
+  [[ -f "$SETTINGS" ]] || return 0
+  python3 -c '
+import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: sys.exit(0)
+print((d.get("env") or {}).get("CLAUDE_ACC_NAME") or "")
+' "$SETTINGS" 2>/dev/null || true
+}
+
+# Thu mot request that. `claude auth status` chi bao NGUON credential chu khong
+# xac nhan credential do con song, nen day la cach duy nhat biet chac.
+# stdout: thong bao ngan. exit 0 = dung duoc.
+probe() {
+  local out
+  if out="$(claude -p 'reply with exactly: OK' --model haiku 2>&1)"; then
+    case "$out" in
+      *OK*) printf 'token hop le, goi duoc API\n'; return 0 ;;
+    esac
+  fi
+  printf '%s\n' "$(printf '%s' "$out" | head -3)"
+  return 1
+}
+
+# Lay chuoi 'sk-ant-…' tu clipboard, ke ca khi copy dinh chu xung quanh.
+token_from_clip() {
+  command -v pbpaste >/dev/null 2>&1 || return 0
+  pbpaste 2>/dev/null | grep -m1 -o 'sk-ant-[A-Za-z0-9._-]*' || true
+}
+
+# Tao script tam de lam bien BROWSER. Claude Code goi no voi URL la $1
+# (da kiem chung: setup-token co ton trong BROWSER tren macOS).
+mk_browser_wrapper() {
+  local app="$1" f
+  f="$(mktemp -t claude-acc-browser)" || die "khong tao duoc file tam."
+  if [[ "$app" == "__clip__" ]]; then
+    cat > "$f" <<'W'
+#!/bin/sh
+# In ra STDERR: stdout dang bi capture_setup_token bat de lay token,
+# nhac nhu o stdout thi nguoi dung khong nhin thay.
+printf '%s' "$1" | pbcopy 2>/dev/null
+printf '\n>>> URL duyet DA COPY VAO CLIPBOARD.\n>>> Mo cua so RIENG TU (Private/Incognito), dan Cmd+V, dang nhap acc can them, roi Authorize.\n\n' >&2
+W
+  else
+    printf '#!/bin/sh\nexec open -a %q "$1"\n' "$app" > "$f"
+  fi
+  chmod +x "$f"
+  printf '%s' "$f"
+}
+
+# Chay `claude setup-token` va BAT token thang tu stdout — nguoi dung khong
+# phai copy/paste gi. Da kiem chung: truoc khi Authorize no khong in gi ra
+# stdout, va token la thu duy nhat di ra stdout sau do. stderr tha ve terminal
+# de nguoi dung van thay tien trinh.
+capture_setup_token() {
+  local w="$1" out=""
+  if [[ -n "$w" ]]; then
+    out="$(BROWSER="$w" claude setup-token </dev/tty 2>/dev/tty)" || true
+  else
+    out="$(claude setup-token </dev/tty 2>/dev/tty)" || true
+  fi
+  printf '%s' "$out" | grep -m1 -o 'sk-ant-[A-Za-z0-9._-]*' || true
+}
+
+# Doc token tu terminal. Co y KHONG dung `read -s`: token dai, an het ky tu
+# thi khong biet dan duoc hay chua. Bo trong + Enter thi lay tu clipboard.
+read_token() {
+  local name="$1" raw=""
+  printf '%sToken cho '\''%s'\''%s — dan vao roi Enter, hoac chi Enter de lay tu clipboard:\n> ' \
+    "$c_b" "$name" "$c_0" >&2
+  IFS= read -r raw </dev/tty || true
+  raw="$(trim "$raw")"
+
+  if [[ -z "$raw" ]] && command -v pbpaste >/dev/null 2>&1; then
+    # CHI nhan chuoi sk-ant-… tu clipboard. Truoc day co fallback `head -1`
+    # vo dai dong dau tien, nen clipboard con sot code cu la lay nham -> bao
+    # loi "khong phai token" du nguoi dung lam dung. Da bo.
+    raw="$(trim "$(token_from_clip)")"
+    if [[ -n "$raw" ]]; then
+      printf '%sda lay tu clipboard: %s…%s (%d ky tu)%s\n' \
+        "$c_dim" "${raw:0:14}" "${raw: -4}" "${#raw}" "$c_0" >&2
+    fi
+  fi
+  printf '%s' "$raw"
+}
+
+# `cp` tren macOS/Linux GIU NGUYEN quyen cua file DICH cu neu no da ton tai,
+# chi copy quyen nguon khi tao file dich MOI. Neu settings.json goc tung co
+# quyen long (vd 644), file backup se ket lai quyen do MAI MAI qua moi lan
+# switch, ro ri token cua nhung lan truoc cho user khac tren may. Vi vay luon
+# chmod 600 backup ngay sau khi cp, khong dua vao quyen cua file dich cu.
+backup_settings() {
+  [[ -f "$SETTINGS" ]] || return 0
+  cp "$SETTINGS" "$SETTINGS.bak-claude-acc"
+  chmod 600 "$SETTINGS.bak-claude-acc"
+}
+
+# ---------- commands ------------------------------------------------------
+
+cmd_add() {
+  local name="" browser="" mode="ask" run_setup=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --browser)  browser="${2:-}"; [[ -n "$browser" ]] || die "--browser can ten app, vd: --browser \"Brave Browser\""; shift 2 ;;
+      --url-only) browser="__clip__"; shift ;;
+      --clip)     mode="clip"; shift ;;
+      --stdin)    mode="stdin"; shift ;;
+      --no-setup) run_setup=0; shift ;;
+      -*)         die "tuy chon khong biet: $1 (xem: claude-acc help)" ;;
+      *)          [[ -z "$name" ]] || die "thua tham so: $1"; name="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "dung: claude-acc add <ten-acc> [--browser <app>|--url-only] [--clip|--stdin|--no-setup]"
+  valid_name "$name"
+
+  if security find-generic-password -s "$SVC" -a "$name" -w >/dev/null 2>&1; then
+    info "${c_y}'$name' da co token — se ghi de.${c_0}"
+  fi
+
+  if [[ -n "$browser" && "$browser" != "__clip__" && ! -d "/Applications/$browser.app" ]]; then
+    info "${c_y}khong thay /Applications/$browser.app${c_0} — van thu, nhung kiem tra lai ten app."
+  fi
+
+  local wrapper="" tok=""
+  if (( run_setup )); then
+    case "$browser" in
+      "")        info "\n${c_y}Se mo BROWSER MAC DINH.${c_0} Neu acc '$name' nam o browser khac, dung\n  --browser \"Brave Browser\" | \"Google Chrome\" | \"Safari\"\nhoac --url-only de tu dan URL." ;;
+      __clip__)  wrapper="$(mk_browser_wrapper __clip__)"; info "\n${c_b}Che do --url-only:${c_0} URL duyet se duoc COPY VAO CLIPBOARD, khong tu mo browser." ;;
+      *)         wrapper="$(mk_browser_wrapper "$browser")"; info "\n${c_b}Se duyet trong: $browser${c_0}" ;;
+    esac
+
+    cat >&2 <<EOF
+
+${c_dim}Sau khi ban bam Authorize, trang se tu quay ve localhost va terminal nay
+in ra token dang 'sk-ant-oat01-…'. Khong can dan code o dau ca.${c_0}
+
+EOF
+
+    info "${c_dim}--- claude setup-token ---${c_0}"
+    tok="$(capture_setup_token "$wrapper")"
+    [[ -n "$wrapper" ]] && rm -f "$wrapper"
+    info "${c_dim}--------------------------${c_0}"
+
+    if [[ -n "$tok" ]]; then
+      info "${c_g}✓ da tu bat duoc token${c_0} (${tok:0:14}…${tok: -4}, ${#tok} ky tu) — khong can copy/paste."
+    else
+      info "${c_y}khong bat duoc token tu output cua setup-token.${c_0} Dan tay ben duoi."
+    fi
+  fi
+
+  # `claude setup-token` la TUI; no co the tra terminal ve trang thai raw
+  # khien `read` ben duoi khong nhan duoc gi. Dua stty ve binh thuong truoc.
+  { stty sane </dev/tty; } >/dev/null 2>&1 || true
+
+  if [[ -z "$tok" ]]; then
+    case "$mode" in
+      clip)  tok="$(token_from_clip)"
+             [[ -n "$tok" ]] || die "clipboard khong chua chuoi 'sk-ant-…'. Copy token roi chay lai."
+             info "${c_dim}lay tu clipboard: ${tok:0:14}…${tok: -4} (${#tok} ky tu)${c_0}" ;;
+      stdin) IFS= read -r tok || true; tok="$(trim "$tok")" ;;
+      *)     tok="$(read_token "$name")" ;;
+    esac
+  fi
+  [[ -n "$tok" ]] || die "token rong, huy."
+
+  if [[ "$tok" != sk-ant-* ]]; then
+    cat >&2 <<EOF
+${c_r}Day khong phai token.${c_0} Token that bat dau bang 'sk-ant-oat01-'.
+Nhieu kha nang ban dan nham ${c_b}code${c_0} — chuoi ngan browser hien ra. Do la
+dau vao cua \`claude setup-token\`, khong phai ket qua.
+
+Token la chuoi dai ma \`claude setup-token\` ${c_b}IN RA${c_0} sau khi duyet xong.
+EOF
+    exit 1
+  fi
+
+  security add-generic-password -U \
+    -s "$SVC" -a "$name" -w "$tok" \
+    -D "Claude Code account token" \
+    -j "Token dang nhap Claude Code cho acc '$name' (quan ly boi claude-acc)" \
+    || die "khong ghi duoc vao Keychain."
+
+  remember "$name"
+  info "${c_dim}da luu '$name'. Dang kiem tra bang mot request that…${c_0}"
+
+  if env CLAUDE_CODE_OAUTH_TOKEN="$tok" bash -c "$(declare -f probe); probe" >&2; then
+    info "${c_g}✓ '$name' san sang.${c_0} Dung: claude-acc switch $name"
+  else
+    info "${c_r}✗ token luu roi nhung KHONG goi duoc API.${c_0}"
+    info "  Chay lai \`claude-acc add $name --browser \"<browser cua acc do>\"\`."
+    return 1
+  fi
+}
+
+# Doi acc cho CA Cursor/VS Code GUI lan terminal, bang khoi `env` trong
+# ~/.claude/settings.json (docs: file nay duoc CHIA SE giua extension va CLI).
+# Da do: khoi `env` DE LEN ca credential Keychain lan bien moi truong cua
+# tien trinh — nen day la cong tac duy nhat, khong the dung song song voi
+# `claude-acc run`.
+cmd_switch() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "dung: claude-acc switch <ten-acc|main>"
+
+  local tok=""
+  if [[ "$name" != "main" ]]; then
+    valid_name "$name"
+    tok="$(token_of "$name")"
+  fi
+
+  backup_settings
+
+  python3 -c '
+import json,sys,os
+p,name,tok=sys.argv[1],sys.argv[2],sys.argv[3]
+d={}
+if os.path.exists(p):
+    with open(p) as f: d=json.load(f)          # loi cu phap -> nem, khong ghi de
+env=d.get("env") or {}
+if name=="main":
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN",None); env.pop("CLAUDE_ACC_NAME",None)
+else:
+    env["CLAUDE_CODE_OAUTH_TOKEN"]=tok; env["CLAUDE_ACC_NAME"]=name
+if env: d["env"]=env
+elif "env" in d: del d["env"]
+with open(p,"w") as f:
+    json.dump(d,f,indent=2,ensure_ascii=False); f.write("\n")
+' "$SETTINGS" "$name" "$tok" \
+    || die "khong sua duoc $SETTINGS (file loi cu phap JSON?). Ban goc: $SETTINGS.bak-claude-acc"
+
+  chmod 600 "$SETTINGS"
+
+  if [[ "$name" == "main" ]]; then
+    info "${c_g}Da chuyen ve 'main'${c_0} (credential Keychain — day du connectors)."
+  else
+    info "${c_g}Da chuyen sang '$name'${c_0} (token)."
+    info "${c_y}Luu y: token nam DANG VAN BAN trong $SETTINGS (quyen 600).${c_0}"
+  fi
+  info "${c_b}Cursor/VS Code: Cmd+Shift+P -> 'Developer: Reload Window' de ap dung.${c_0}"
+
+  info "${c_dim}Kiem tra bang mot request that…${c_0}"
+  cmd_check "$name"
+}
+
+# Dang nhap acc "main" (ghi vao Keychain), chon duoc browser.
+cmd_login() {
+  local browser=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --browser)  browser="${2:-}"; [[ -n "$browser" ]] || die "--browser can ten app."; shift 2 ;;
+      --url-only) browser="__clip__"; shift ;;
+      *)          die "dung: claude-acc login [--browser <app>|--url-only]" ;;
+    esac
+  done
+
+  info "${c_y}Luu y:${c_0} lenh nay GHI DE credential trong Keychain — acc 'main' hien tai"
+  info "se bi thay the. Cac acc phu (dung token) khong bi anh huong."
+
+  local wrapper=""
+  [[ -n "$browser" ]] && wrapper="$(mk_browser_wrapper "$browser")"
+  [[ -n "$browser" && "$browser" != "__clip__" ]] && info "${c_b}Se duyet trong: $browser${c_0}"
+
+  if [[ -n "$wrapper" ]]; then
+    BROWSER="$wrapper" claude auth login </dev/tty || true
+    rm -f "$wrapper"
+  else
+    claude auth login </dev/tty || true
+  fi
+
+  { stty sane </dev/tty; } >/dev/null 2>&1 || true
+  info "\n${c_dim}Ket qua:${c_0}"
+  cmd_check main
+}
+
+cmd_rm() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "dung: claude-acc rm <ten-acc>"
+  valid_name "$name"
+  security delete-generic-password -s "$SVC" -a "$name" >/dev/null 2>&1 \
+    || info "${c_y}khong tim thay token cua '$name' trong Keychain (van go khoi danh sach).${c_0}"
+  forget "$name"
+  if [[ "$(pinned_acc)" == "$name" ]]; then
+    info "${c_y}'$name' dang duoc ghim — bo ghim luon.${c_0}"
+    cmd_switch main >&2 || true
+  fi
+  info "${c_g}da xoa '$name'.${c_0}"
+}
+
+cmd_ls() {
+  local who
+  who="$(env -u CLAUDE_CODE_OAUTH_TOKEN bash -c 'claude auth status --json 2>/dev/null' | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print(""); sys.exit()
+def walk(o):
+    if isinstance(o,dict):
+        for k,v in o.items():
+            if k.lower() in ("email","emailaddress","account_email") and isinstance(v,str): return v
+            r=walk(v)
+            if r: return r
+    elif isinstance(o,list):
+        for v in o:
+            r=walk(v)
+            if r: return r
+    return None
+print(walk(d) or "")
+' 2>/dev/null || true)"
+
+  local pin; pin="$(pinned_acc)"
+  if [[ -n "$pin" ]]; then
+    printf '%sDANG GHIM: %s%s %s(GUI + terminal deu dung acc nay)%s\n\n' \
+      "$c_b" "$pin" "$c_0" "$c_dim" "$c_0"
+  else
+    printf '%sDANG GHIM: main%s %s(chua ghim gi — dung credential Keychain)%s\n\n' \
+      "$c_b" "$c_0" "$c_dim" "$c_0"
+  fi
+
+  printf '%smain%s  %s(Keychain — day du connectors, Remote Control)%s\n' \
+    "$c_b" "$c_0" "$c_dim" "$c_0"
+  [[ -n "$who" ]] && printf '        %s%s%s\n' "$c_dim" "$who" "$c_0"
+
+  if [[ -s "$LIST" ]]; then
+    printf '\n%sacc phu%s %s(token — khong co connectors)%s\n' "$c_b" "$c_0" "$c_dim" "$c_0"
+    while IFS= read -r a; do
+      [[ -n "$a" ]] || continue
+      if security find-generic-password -s "$SVC" -a "$a" -w >/dev/null 2>&1; then
+        printf '  %s✓%s %s\n' "$c_g" "$c_0" "$a"
+      else
+        printf '  %s✗%s %s %s(mat token — chay: claude-acc add %s)%s\n' "$c_r" "$c_0" "$a" "$c_dim" "$a" "$c_0"
+      fi
+    done < "$LIST"
+  else
+    printf '\n%schua co acc phu nao. Them bang: claude-acc add <ten>%s\n' "$c_dim" "$c_0"
+  fi
+}
+
+cmd_run() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "dung: claude-acc run <ten-acc|main> [-- <tham so cho claude>]"
+  shift
+  [[ "${1:-}" == "--" ]] && shift
+
+  # Khoi `env` trong settings.json de len bien moi truong (da do), nen khi da
+  # ghim thi `run` khong doi duoc acc nua — bao thang thay vi chay sai am tham.
+  local pin; pin="$(pinned_acc)"
+  if [[ -n "$pin" && "$pin" != "$name" ]]; then
+    if [[ "$name" == "main" ]]; then
+      die "dang GHIM acc '$pin' trong ~/.claude/settings.json — no de len \`run\`.
+     Bo ghim: claude-acc switch main"
+    else
+      die "dang GHIM acc '$pin' trong ~/.claude/settings.json — no de len \`run\`.
+     Doi ghim: claude-acc switch $name"
+    fi
+  fi
+
+  if [[ "$name" == "main" ]]; then
+    exec env -u CLAUDE_CODE_OAUTH_TOKEN claude "$@"
+  fi
+  valid_name "$name"
+  exec env CLAUDE_CODE_OAUTH_TOKEN="$(token_of "$name")" claude "$@"
+}
+
+cmd_env() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "dung: eval \"\$(claude-acc env <ten-acc|main>)\""
+  if [[ "$name" == "main" ]]; then
+    printf 'unset CLAUDE_CODE_OAUTH_TOKEN\n'
+    return
+  fi
+  valid_name "$name"
+  printf 'export CLAUDE_CODE_OAUTH_TOKEN=%q\n' "$(token_of "$name")"
+}
+
+cmd_check() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || die "dung: claude-acc check <ten-acc|main>"
+
+  if [[ "$name" == "main" ]]; then
+    env -u CLAUDE_CODE_OAUTH_TOKEN claude auth status --text
+    printf '%sdang thu mot request that…%s\n' "$c_dim" "$c_0" >&2
+    if env -u CLAUDE_CODE_OAUTH_TOKEN bash -c "$(declare -f probe); probe"; then
+      printf '%s✓ main dung duoc%s\n' "$c_g" "$c_0"
+    else
+      printf '%s✗ main KHONG dung duoc%s — chay: claude auth login\n' "$c_r" "$c_0"
+      return 1
+    fi
+    return
+  fi
+
+  valid_name "$name"
+  local tok; tok="$(token_of "$name")"
+  env CLAUDE_CODE_OAUTH_TOKEN="$tok" claude auth status --text
+  printf '%sdang thu mot request that…%s\n' "$c_dim" "$c_0" >&2
+  if env CLAUDE_CODE_OAUTH_TOKEN="$tok" bash -c "$(declare -f probe); probe"; then
+    printf '%s✓ %s dung duoc%s\n' "$c_g" "$name" "$c_0"
+  else
+    printf '%s✗ %s KHONG dung duoc%s — chay lai: claude-acc add %s (chon Y)\n' \
+      "$c_r" "$name" "$c_0" "$name"
+    return 1
+  fi
+}
+
+cmd_uninstall() {
+  info "${c_b}Se go bo:${c_0}"
+  [[ -s "$LIST" ]] && while IFS= read -r a; do [[ -n "$a" ]] && info "  - token Keychain cua '$a'"; done < "$LIST"
+  info "  - $CFG_DIR (danh sach acc phu)"
+  [[ -n "$(pinned_acc)" ]] && info "  - bo ghim trong $SETTINGS (dua ve 'main')"
+  local self; self="$(command -v claude-acc 2>/dev/null || printf '%s' "$0")"
+  info "${c_dim}Sau buoc nay, xoa tay file binh: $self${c_0}"
+
+  local yn
+  read -r -p "Xac nhan xoa? [y/N] " yn </dev/tty || true
+  [[ "${yn:-n}" == [yY]* ]] || { info "da huy."; return 1; }
+
+  if [[ -s "$LIST" ]]; then
+    while IFS= read -r a; do
+      [[ -n "$a" ]] || continue
+      security delete-generic-password -s "$SVC" -a "$a" >/dev/null 2>&1 || true
+    done < "$LIST"
+  fi
+  [[ -n "$(pinned_acc)" ]] && cmd_switch main >&2 || true
+  rm -rf "$CFG_DIR"
+  info "${c_g}xong.${c_0} Xoa tiep binh claude-acc khoi PATH neu muon go hoan toan."
+}
+
+cmd_help() {
+  cat <<EOF
+${c_b}claude-acc${c_0} v${VERSION} — nhieu account Claude Code tren mot may, khong login lai
+
+${c_b}LENH${c_0}
+  add <ten> [tuy chon]   Them acc phu: chay \`claude setup-token\`, luu token vao Keychain
+      --browser <app>      Duyet trong app nay thay vi browser mac dinh
+                           (vd: "Google Chrome" | "Safari" | "Brave Browser")
+      --url-only           Khong mo browser; COPY URL duyet vao clipboard de tu dan
+      --clip               Lay token tu clipboard, khong hoi gi
+      --stdin              Doc token tu stdin:  pbpaste | claude-acc add x --stdin
+      --no-setup           Bo qua buoc sinh token (khi da co token san)
+  switch <ten|main>      Doi acc cho CA Cursor/VS Code GUI lan terminal.
+                         Ghi vao khoi env cua ~/.claude/settings.json, roi
+                         Reload Window trong Cursor. DAY LA LENH CHINH DE DOI ACC.
+  ls                     Liet ke acc (main + cac acc phu, kem tinh trang token)
+  check <ten|main>       Goi mot request that de xac nhan acc do con dung duoc
+  login [--browser <app>]  Dang nhap acc 'main' (ghi de Keychain), chon browser
+  rm <ten>               Xoa acc phu khoi Keychain
+  run <ten|main> [-- args]  (nang cao) Chay claude bang acc do CHI CHO LENH NAY,
+                         khong doi acc dang ghim. Loi neu dang co acc khac ghim.
+  env <ten|main>         (nang cao) In lenh export de doi acc cho SHELL HIEN TAI:
+                           eval "\$(claude-acc env ten-acc)"
+  uninstall              Xoa toan bo token trong Keychain va cau hinh cua claude-acc
+  version, -v            In phien ban
+  help, -h               In huong dan nay
+
+${c_b}BAT DAU NHANH${c_0}
+  claude-acc add ca-nhan --browser "Safari"   # duyet trong browser dang login acc do
+  claude-acc switch ca-nhan                   # doi acc cho ca terminal lan GUI
+  claude                                      # dung claude nhu binh thuong
+  claude-acc switch main                      # doi ve acc chinh
+
+${c_b}LUU Y${c_0}
+  - Chi acc 'main' co claude.ai connectors, Remote Control va /schedule.
+    Chon acc dung nhieu nhat lam main.
+  - \`claude setup-token\` KHONG ghi vao Keychain cua acc 'main' — them acc phu
+    khong bao gio lam mat dang nhap cua acc chinh. Chi \`claude-acc login\` moi
+    ghi de Keychain.
+  - Token \`setup-token\` song 1 nam. Het han thi \`claude-acc add <ten>\` lai.
+  - \`switch\` ghi token DANG VAN BAN vao ~/.claude/settings.json (quyen 600) vi
+    Cursor/VS Code doc credential tu do, khong doc duoc Keychain rieng theo acc.
+  - History/session dung chung giua cac acc (khong tach CLAUDE_CONFIG_DIR).
+EOF
+}
+
+# ---------- dispatch ------------------------------------------------------
+
+case "${1:-help}" in
+  add)                shift; cmd_add "$@" ;;
+  switch|use)         shift; cmd_switch "$@" ;;
+  login)              shift; cmd_login "$@" ;;
+  rm|remove|del)      shift; cmd_rm "$@" ;;
+  ls|list)            shift; cmd_ls "$@" ;;
+  run|exec)           shift; cmd_run "$@" ;;
+  env)                shift; cmd_env "$@" ;;
+  check|status)       shift; cmd_check "$@" ;;
+  uninstall)          shift; cmd_uninstall "$@" ;;
+  version|-v|--version) printf 'claude-acc %s\n' "$VERSION" ;;
+  help|-h|--help)     cmd_help ;;
+  *)                  die "lenh khong biet: '$1'. Xem: claude-acc help" ;;
+esac
