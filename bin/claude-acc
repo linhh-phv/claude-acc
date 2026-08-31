@@ -93,21 +93,23 @@ token_from_clip() {
 mk_browser_wrapper() {
   local app="$1" f
   f="$(mktemp -t claude-acc-browser)" || die "khong tao duoc file tam."
+  # QUAN TRONG: wrapper KHONG duoc in bat cu thu gi ra terminal (stdout/stderr).
+  # `claude setup-token` dung "alternate screen buffer" (giao dien toan man
+  # hinh) trong luc cho duyet; wrapper ghi chu tu vao terminal NGAY LUC DO
+  # (da kiem chung bang thuc nghiem: co in la treo, khong nhan phim nua, kieu
+  # dang bi treo qua `--browser` nhung khong bi qua chay `claude setup-token`
+  # tran) co the lam hong trang thai ve/con tro cua no. `claude` da TU IN URL
+  # rieng nhu mot phuong an du phong, nen wrapper chi can lam dung 1 viec:
+  # mo app hoac copy vao clipboard, tuyet doi im lang.
   if [[ "$app" == "__clip__" ]]; then
     cat > "$f" <<'W'
 #!/bin/sh
-printf '%s\n' "$1" >&2
 printf '%s' "$1" | pbcopy 2>/dev/null
-printf '\n>>> URL tren DA COPY VAO CLIPBOARD.\n>>> Mo cua so RIENG TU (Private/Incognito), dan Cmd+V, dang nhap acc can them, roi Authorize.\n\n' >&2
 W
   else
-    # Luon in ca URL ra stderr truoc khi tu mo app: `open -a` mo dung PROGRAM
-    # nhung khong chon duoc PROFILE (vd Chrome co nhieu profile) — neu no mo
-    # nham profile, nguoi dung van co URL de tu dan sang dung profile/cua so.
     local q_app; q_app="$(printf '%q' "$app")"
     cat > "$f" <<EOF
 #!/bin/sh
-printf '\nNeu $app khong tu mo dung acc dang can, dan link nay vao dung profile/cua so:\n%s\n\n' "\$1" >&2
 open -a $q_app "\$1"
 EOF
   fi
@@ -189,8 +191,8 @@ cmd_add() {
   if (( run_setup )); then
     case "$browser" in
       "")        info "\n${c_y}Se mo BROWSER MAC DINH.${c_0} Neu acc '$name' nam o browser khac, dung\n  --browser \"Brave Browser\" | \"Google Chrome\" | \"Safari\"\nhoac --url-only de tu dan URL." ;;
-      __clip__)  wrapper="$(mk_browser_wrapper __clip__)"; info "\n${c_b}Che do --url-only:${c_0} URL duyet se duoc COPY VAO CLIPBOARD, khong tu mo browser." ;;
-      *)         wrapper="$(mk_browser_wrapper "$browser")"; info "\n${c_b}Se duyet trong: $browser${c_0}" ;;
+      __clip__)  wrapper="$(mk_browser_wrapper __clip__)"; info "\n${c_b}Che do --url-only:${c_0} URL duyet se tu dong duoc COPY VAO CLIPBOARD (khong tu mo browser). Dan (Cmd+V) vao dung cua so/profile can dang nhap." ;;
+      *)         wrapper="$(mk_browser_wrapper "$browser")"; info "\n${c_b}Se duyet trong: $browser${c_0} — neu no mo nham profile, \`claude setup-token\` cung se tu in URL o ben duoi de ban tu dan sang cua so dung." ;;
     esac
 
     cat >&2 <<EOF
