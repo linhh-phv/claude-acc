@@ -82,6 +82,16 @@ Run `claude-acc help` any time for the full reference (in Vietnamese, matching h
 | `--url-only` | You'd rather copy the auth URL yourself (e.g. into a private/incognito window) than let it open an app. |
 | `--clip` | You already have a token in your clipboard and just want to store it, no prompts. |
 | `--stdin` | Pipe a token in: `pbpaste \| claude-acc add work --stdin`. |
+| `--no-setup` | Skip running `claude setup-token` entirely — pair with `--clip`/`--stdin` when you already ran it yourself and just want to register the result. |
+
+### What to expect when it runs
+
+`claude setup-token` completes one of two ways, and which one it picks isn't something `claude-acc` controls:
+
+- It redirects straight back to your terminal and finishes on its own, or
+- After you authorize in the browser, it shows a short **code** on that page and the terminal waits at `Paste code here if prompted >` for you to bring it back. This is a normal fallback built into Claude Code itself, not a `claude-acc` bug or a stuck terminal — type or paste the code and press Enter.
+
+Either way, once `claude setup-token` prints the final `sk-ant-oat01-…` token, `claude-acc` grabs it automatically (it runs the command through `script(1)`, which gives `claude` a real terminal to render into while still letting `claude-acc` read back what it printed) — no copy/paste needed for that last step. If capture ever fails for some reason, it falls back to asking you to paste that token manually, so `add` can never leave you with no way to finish.
 
 ## Why the account's token ends up as plaintext in a JSON file
 
