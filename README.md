@@ -74,6 +74,7 @@ claude-acc switch personal --here   # only this repo; the global account is unto
 | This repo back on the main account | `claude-acc switch main --here` |
 | Stop pinning this repo | `claude-acc switch off --here` |
 | Who is being used, and where? | `claude-acc ls` |
+| Start every account's 5-hour window | `claude-acc trigger` |
 
 Everything takes effect on the next request — no reload, no restart, no new chat tab.
 
@@ -163,6 +164,30 @@ it is not an option. `claude-acc` therefore:
 `main` is the exception: pinning `main` writes an empty token, which overrides the
 global one and falls back to the Keychain. No secret is written at all.
 
+## Starting the 5-hour windows
+
+Claude's usage window only starts counting from an account's **first** request, so an
+account you haven't touched isn't running its clock. Kicking each one off by hand — switch,
+send something, switch again — gets tedious once you have a few accounts. One command
+does all of them, in parallel:
+
+```bash
+claude-acc trigger                  # every account, main included
+claude-acc trigger work personal    # only these two — leave the others alone
+```
+
+Each account gets one cheap Haiku request. Naming accounts explicitly is how you skip
+the ones you don't want started (a work account you'd rather not put on the clock yet).
+A name you don't have is an error rather than a silent skip, so a typo can't quietly
+trigger an account you meant to leave out.
+
+Under the hood it can't just set `CLAUDE_CODE_OAUTH_TOKEN` and call `claude` — the `env`
+block in `~/.claude/settings.json` overrides the environment. So each account is called
+inside its own temporary directory carrying a `.claude/settings.local.json`, which
+outranks the user-level file; `main` uses the empty-token trick to fall back to the
+Keychain. Those directories are `700`, the files `600`, and they're removed on the way
+out, including on Ctrl+C.
+
 ## Commands
 
 | Command | What it does |
@@ -172,6 +197,7 @@ global one and falls back to the Keychain. No secret is written at all.
 | `switch <name\|main\|off> --here` | Pin an account to the current repo/workspace, independent of the global one. `--at <dir>` targets another directory, `--no-check` skips the verifying API call. Also spelled `here <name>`. |
 | `reassign <old> <new>` | Move every pinned directory from one account to another — for when `<old>` is near its limit. |
 | `sync` | Rewrite the token in every pinned directory (after re-adding an account), and drop directories that no longer exist. |
+| `trigger [name...]` | Start the 5-hour usage window for the named accounts, or for all of them (including `main`) when given none. Runs them in parallel. Also spelled `warm`. |
 | `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. |
 | `check <name\|main>` | Verify an account's credential still works, with a real API call — not just a config read. |
 | `login [--browser <app>]` | Re-run `claude auth login` for `main` (this overwrites the Keychain — `main` only). |

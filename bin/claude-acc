@@ -737,6 +737,91 @@ cmd_sync() {
   [[ $gone -gt 0 ]] && info "${c_dim}($gone thu muc khong con, da don khoi so dang ky.)${c_0}"
 }
 
+# Mo cua so 5h cho nhieu acc mot luc. Cua so chi bat dau tinh tu request DAU
+# TIEN, nen acc khong dung den thi khong chay gio — goi mot request re nhat
+# cho tung acc la du de khoi dong.
+#
+# Khong the chi set CLAUDE_CODE_OAUTH_TOKEN roi goi: khoi `env` trong
+# ~/.claude/settings.json DE LEN bien moi truong (da do). Nen moi acc duoc
+# goi trong mot thu muc tam co .claude/settings.local.json rieng — cap repo
+# de len cap user. Rieng 'main' dung token RONG: de len token thua ke roi
+# roi ve Keychain.
+warm_one() {
+  local acc="$1" dir="$2" out_file="$3" tok="" out rc=0
+  mkdir -p "$dir/.claude"
+  if [[ "$acc" != "main" ]]; then
+    if ! tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)"; then
+      printf 'ERR\tmat token — chay: claude-acc add %s\n' "$acc" > "$out_file"
+      return
+    fi
+  fi
+  CLAUDE_ACC_TOK="$tok" python3 - "$dir/.claude/settings.local.json" <<'PYEOF'
+import json, os, sys
+fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
+    json.dump({"env": {"CLAUDE_CODE_OAUTH_TOKEN": os.environ.get("CLAUDE_ACC_TOK", "")}}, f)
+PYEOF
+  out="$(cd "$dir" && env -u CLAUDE_CODE_OAUTH_TOKEN claude -p 'Reply with exactly: OK' \
+         --model haiku 2>&1 </dev/null)" || rc=1
+  if [[ $rc -eq 0 && "$out" == *OK* ]]; then
+    printf 'OK\t\n' > "$out_file"
+  else
+    printf 'ERR\t%s\n' "$(printf '%s' "$out" | head -1)" > "$out_file"
+  fi
+}
+
+cmd_warm() {
+  local accs=() a
+  if [[ $# -eq 0 ]]; then
+    accs+=("main")
+    while IFS= read -r a; do [[ -n "$a" ]] && accs+=("$a"); done < "$LIST"
+  else
+    for a in "$@"; do
+      case "$a" in
+        -*) die "lenh nay chi nhan ten acc. Vi du: claude-acc trigger work personal" ;;
+        main) ;;
+        *)  valid_name "$a"
+            known "$a" || die "khong biet acc '$a'. Xem danh sach: claude-acc ls" ;;
+      esac
+      accs+=("$a")
+    done
+  fi
+  [[ ${#accs[@]} -gt 0 ]] || die "khong co acc nao de trigger."
+
+  local base
+  base="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-warm.XXXXXX")" || die "khong tao duoc thu muc tam."
+  chmod 700 "$base"
+  # Token nam trong cac file duoi $base — don ca khi bi Ctrl+C.
+  trap 'rm -rf "$base"' EXIT INT TERM
+
+  info "${c_dim}Goi mot request nho cho ${#accs[@]} acc (song song)…${c_0}"
+  for a in "${accs[@]}"; do
+    warm_one "$a" "$base/$a" "$base/res.$a" &
+  done
+  wait
+
+  local ok=0 bad=0 line st msg
+  for a in "${accs[@]}"; do
+    line="$(cat "$base/res.$a" 2>/dev/null || printf 'ERR\tkhong co ket qua\n')"
+    st="${line%%$'\t'*}"; msg="${line#*$'\t'}"
+    if [[ "$st" == "OK" ]]; then
+      printf '  %s✓%s %-10s %sda mo cua so 5h%s\n' "$c_g" "$c_0" "$a" "$c_dim" "$c_0"
+      ok=$((ok+1))
+    else
+      printf '  %s✗%s %-10s %s\n' "$c_r" "$c_0" "$a" "$msg"
+      bad=$((bad+1))
+    fi
+  done
+  rm -rf "$base"; trap - EXIT INT TERM
+  info ""
+  if [[ $bad -eq 0 ]]; then
+    info "${c_g}Xong: $ok/$ok acc.${c_0}"
+  else
+    info "${c_y}Xong: $ok duoc, $bad loi.${c_0}"
+    return 1
+  fi
+}
+
 cmd_login() {
   local browser=""
   while [[ $# -gt 0 ]]; do
@@ -1015,6 +1100,9 @@ ${c_b}LENH${c_0}
                          \`off\` = bo ghim rieng, quay ve theo acc toan cuc.
       --at <thu-muc>       ghim cho thu muc khac thay vi thu muc hien tai
       --no-check           bo qua buoc goi thu API sau khi ghim
+  trigger [ten...]       Mo cua so 5h cho cac acc (mac dinh: TAT CA, ke ca main)
+                         bang mot request nho, chay song song. Nêu ten acc de
+                         chi trigger dung nhung acc do.
   reassign <cu> <moi>    Chuyen MOI thu muc dang ghim <cu> sang <moi>
   sync                   Ghi lai token cho moi thu muc da ghim (sau khi \`add\`
                          lai mot acc, hoac khi nghi file trong repo bi sua)
@@ -1040,6 +1128,9 @@ ${c_b}BAT DAU NHANH${c_0}
   claude-acc switch main --here                  # rieng repo nay dung main
   claude-acc switch off --here                   # bo ghim rieng cua repo
   claude-acc reassign ca-nhan acc-2           # acc-1 gan het limit -> san tai
+
+  claude-acc trigger                          # mo cua so 5h cho TAT CA acc
+  claude-acc trigger ca-nhan acc-2            # chi 2 acc nay (bo qua acc cong ty)
 
 ${c_b}GHIM THEO THU MUC — hai dieu PHAI biet (deu da do, khong phai suy doan)${c_0}
   - Settings cap repo chi an khi \`claude\` chay DUNG o thu muc chua .claude/.
@@ -1068,6 +1159,7 @@ EOF
 case "${1:-help}" in
   add)                shift; cmd_add "$@" ;;
   here|pin)           shift; cmd_here "$@" ;;
+  trigger|warm)       shift; cmd_warm "$@" ;;
   reassign)           shift; cmd_reassign "$@" ;;
   sync)               shift; cmd_sync "$@" ;;
   switch|use)
