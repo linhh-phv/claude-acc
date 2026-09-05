@@ -118,6 +118,8 @@ t_vi() {
     ls_gui)         printf '%b' 'GUI     ' ;;
     ls_pin_of)      printf '%b' 'ghim của %s' ;;
     ls_nopin)       printf '%b' 'không ghim riêng — theo toàn cục' ;;
+    resync_done)    printf '%b' 'đã cập nhật token mới vào %s chỗ đang ghim acc này' ;;
+    sync_global)    printf '%b' 'ghim toàn cục cũng đã nhận token mới' ;;
     ls_here_term)   printf '%b' 'chỉ khi bạn chạy claude từ terminal ở đây — GUI dùng dòng trên' ;;
     ls_main_desc)   printf '%b' 'Keychain — đầy đủ connectors, Remote Control' ;;
     ls_sub)         printf '%b' 'acc phụ' ;;
@@ -314,6 +316,8 @@ t_en() {
     ls_gui)         printf '%b' 'GUI     ' ;;
     ls_pin_of)      printf '%b' 'pin of %s' ;;
     ls_nopin)       printf '%b' 'no pin here — follows the global one' ;;
+    resync_done)    printf '%b' 'wrote the new token into %s place(s) already pinned to this account' ;;
+    sync_global)    printf '%b' 'the global pin got the new token too' ;;
     ls_here_term)   printf '%b' 'only if you run claude from a terminal here — the GUI uses the row above' ;;
     ls_main_desc)   printf '%b' 'Keychain — full connectors, Remote Control' ;;
     ls_sub)         printf '%b' 'token accounts' ;;
@@ -920,6 +924,7 @@ EOF
     || die "$(t err_keychain)"
 
   remember "$name"
+  resync_acc "$name" "$tok"
   info "${c_dim}$(tp add_saved "$name")${c_0}"
 
   # `probe` la ham co san trong chinh script nay, subshell da thua ke duoc —
@@ -948,6 +953,50 @@ EOF
 # doi token thanh rac giua mot phien stream-json -> luot ke tiep bao 401 ngay.
 # Vi vay switch AN NGAY, khong can Reload Window — va cung vi vay no ap len
 # ca nhung phien dang chay do o cua so/repo khac.
+# Sau khi `add` lai mot acc, token trong Keychain la token MOI — nhung moi
+# noi da ghim acc do (settings.json toan cuc, va tung .claude/settings.local
+# .json cua cac thu muc) van dang giu token CU. Khong lan token moi ra thi
+# nguoi dung gia han xong ma cac cho van chay bang token sap het han, roi
+# hong vao mot ngay khong doan truoc.
+resync_acc() {
+  local name="$1" tok="$2" n=0 dir acc
+
+  if [[ "$(pinned_acc)" == "$name" ]]; then
+    write_global_token "$name" "$tok" && n=$((n+1))
+  fi
+
+  while IFS=$'\t' read -r dir acc; do
+    [[ -n "$dir" && -d "$dir" && "$acc" == "$name" ]] || continue
+    write_repo_pin "$dir" "$name" "$tok" && n=$((n+1))
+  done < "$REPOS"
+
+  [[ $n -gt 0 ]] && info "${c_dim}$(tp resync_done "$n")${c_0}"
+  return 0
+}
+
+# Ghi token moi vao ghim TOAN CUC, im lang.
+write_global_token() {
+  local name="$1" tok="$2"
+  backup_settings
+  CLAUDE_ACC_TOK="$tok" python3 - "$SETTINGS" "$name" <<'PYEOF'
+import json, os, sys
+p, name = sys.argv[1], sys.argv[2]
+d = {}
+if os.path.exists(p):
+    with open(p) as f:
+        d = json.load(f)
+env = d.get("env") or {}
+env["CLAUDE_CODE_OAUTH_TOKEN"] = os.environ.get("CLAUDE_ACC_TOK", "")
+env["CLAUDE_ACC_NAME"] = name
+d["env"] = env
+fd = os.open(p + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+os.replace(p + ".tmp", p)
+PYEOF
+}
+
 cmd_switch() {
   local name="${1:-}"
   [[ -n "$name" ]] || die "$(t usage_switch)"
@@ -1171,7 +1220,7 @@ cmd_reassign() {
 # Ghi lai token hien tai vao moi thu muc da ghim. Dung sau khi `add` lai mot
 # acc (token moi) hoac khi nghi ngo file trong repo bi sua/mat.
 cmd_sync() {
-  local n=0 fixed=0 gone=0 dir acc
+  local n=0 fixed=0 gone=0 dir acc global_tok=""
   while IFS=$'\t' read -r dir acc; do
     [[ -n "$dir" ]] || continue
     if [[ ! -d "$dir" ]]; then
@@ -1188,9 +1237,14 @@ cmd_sync() {
     local before; before="$(repo_pin "$dir")"
     guard_git "$dir"
     write_repo_pin "$dir" "$acc" "$tok"
+    # ghim toan cuc cung phai theo, nhung chi ghi MOT lan (o cuoi ham)
+    [[ "$(pinned_acc)" == "$acc" ]] && global_tok="$tok"
     [[ "$before" == "$acc" ]] || { info "$(tp sync_fix "$dir" "$before" "$acc")"; fixed=$((fixed+1)); }
     n=$((n+1))
   done < "$REPOS"
+  if [[ -n "$global_tok" ]]; then
+    write_global_token "$(pinned_acc)" "$global_tok" && info "${c_dim}$(t sync_global)${c_0}"
+  fi
   info "${c_g}$(tp sync_done "$n")${c_0}"
   [[ $fixed -gt 0 ]] && info "${c_dim}$(tp sync_fixn "$fixed")${c_0}"
   [[ $gone -gt 0 ]] && info "${c_dim}$(tp sync_gonen "$gone")${c_0}"

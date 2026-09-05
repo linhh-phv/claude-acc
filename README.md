@@ -302,7 +302,7 @@ Your `main` account never has this trade-off: it stays exclusively in the encryp
 - **A directory pin only works in that exact directory** (see above), and in a
   multi-root workspace the directory that counts is folder `[0]`, not the worktree you
   are looking at.
-- **Tokens expire after about a year.** `claude-acc check <name>` will tell you when one has; just `claude-acc add <name>` again.
+- **Tokens expire after about a year.** `claude-acc check <name>` tells you when one has. Run `claude-acc add <name>` again to mint a fresh one — it overwrites the Keychain entry and pushes the new token into every place already pinned to that account, the global pin included.
 - **A token is briefly visible via `ps` while `claude-acc add` writes it to the Keychain.** `security add-generic-password -w <password>` requires the password as a command-line argument — its own man page's only non-interactive option — so for the moment that one command runs, the token is technically readable by another local user running `ps -ef`, or by exec-argv-logging security/EDR software on managed machines. This is a limitation of the macOS `security` CLI itself, not something `claude-acc` can close without reimplementing Keychain writes against the native Keychain Services API. Everywhere else (settings.json writes, subprocess env passing) `claude-acc` avoids putting the token in argv.
 
 ## License
