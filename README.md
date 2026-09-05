@@ -75,6 +75,7 @@ claude-acc switch personal --here   # only this repo; the global account is unto
 | Stop pinning this repo | `claude-acc switch off --here` |
 | Who is being used, and where? | `claude-acc ls` |
 | Start every account's 5-hour window | `claude-acc trigger` |
+| See how much each account has left | `claude-acc usage` |
 
 Everything takes effect on the next request — no reload, no restart, no new chat tab.
 
@@ -188,6 +189,49 @@ outranks the user-level file; `main` uses the empty-token trick to fall back to 
 Keychain. Those directories are `700`, the files `600`, and they're removed on the way
 out, including on Ctrl+C.
 
+## Seeing how much each account has left
+
+Claude Code has no CLI command for this — `/usage` only exists inside a session — but the
+API reports it in response headers, so `claude-acc` asks for it directly:
+
+```bash
+claude-acc usage                 # every account, main included
+claude-acc usage work personal   # only these two
+```
+
+```
+  acc        cua so 5h                      cua so 7 ngay
+ * work      #.........   9%  13:40 (con 3h32)   3%  11/09 (con 6 ngay)
+ * personal    ..........   2%  11:00 (con 52p)    0%  11/09 (con 6 ngay)
+ * main      #####.....  50%  13:30 (con 3h22)  19%  05/09 (con 9h52)
+
+Con nhieu nhat: personal (5h moi dung 2%)
+  -> dung cho repo dang lam:  claude-acc switch personal --here
+```
+
+It reads `anthropic-ratelimit-unified-*` off a one-token request, so the numbers are the
+real thing rather than a local guess — including when an account is already out, because
+a 429 carries those headers too. `main` is covered as well: its access token lives in
+Claude Code's own Keychain entry, not in `claude-acc`'s, and is read from there.
+
+**Asking costs a request, so `usage` also starts the 5-hour window** — exactly like
+`trigger`. Name the accounts you want if some should stay off the clock.
+
+### What the token can and can't reach
+
+A `setup-token` credential is scoped to model calls. Measured:
+
+| | |
+|---|---|
+| Usage: 5h / 7d utilization, reset time, allowed-or-out | ✅ response headers |
+| Whether overage is permitted | ✅ header |
+| The account's email or name | ❌ `403 OAuth token does not meet scope requirement` |
+| `/v1/me` | ❌ `404` |
+| Sessions / conversations | ❌ not server-side — they're local files under `~/.claude/projects`, shared across accounts |
+| `claude auth status --json` | Only `loggedIn`, `authMethod`, `apiProvider`, `analyticsDisabled`, `projectsDirectory` |
+
+That's why `claude-acc ls` can show an email for `main` but not for token accounts.
+
 ## Commands
 
 | Command | What it does |
@@ -197,6 +241,7 @@ out, including on Ctrl+C.
 | `switch <name\|main\|off> --here` | Pin an account to the current repo/workspace, independent of the global one. `--at <dir>` targets another directory, `--no-check` skips the verifying API call. Also spelled `here <name>`. |
 | `reassign <old> <new>` | Move every pinned directory from one account to another — for when `<old>` is near its limit. |
 | `sync` | Rewrite the token in every pinned directory (after re-adding an account), and drop directories that no longer exist. |
+| `usage [name...]` | Show 5h / 7d utilization and reset times per account, and suggest the one with most headroom. Costs (and therefore starts) one request per account. Also spelled `quota`. |
 | `trigger [name...]` | Start the 5-hour usage window for the named accounts, or for all of them (including `main`) when given none. Runs them in parallel. Also spelled `warm`. |
 | `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. |
 | `check <name\|main>` | Verify an account's credential still works, with a real API call — not just a config read. |

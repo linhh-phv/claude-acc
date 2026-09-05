@@ -822,6 +822,190 @@ cmd_warm() {
   fi
 }
 
+# Access token cua acc 'main' nam trong credential rieng cua Claude Code
+# (service "Claude Code-credentials"), khong phai trong kho token cua
+# claude-acc. No co han ngan va do chinh Claude Code lam moi.
+main_access_token() {
+  local raw
+  raw="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null)" || return 1
+  # QUAN TRONG: script python den tu heredoc => no CHIEM stdin. Pipe them du
+  # lieu vao day se khong toi noi (json.load(sys.stdin) doc phai chinh script,
+  # hoac rong). Nen JSON di qua bien moi truong.
+  CLAUDE_ACC_RAW="$raw" python3 - <<'PYEOF'
+import json, os, sys
+try:
+    d = json.loads(os.environ.get("CLAUDE_ACC_RAW", ""))
+except Exception:
+    sys.exit(1)
+tok = (d.get("claudeAiOauth") or {}).get("accessToken") or ""
+if not tok:
+    sys.exit(1)
+print(tok)
+PYEOF
+}
+
+# Hoi API mot cau re nhat va doc HEADERS — so lieu han muc chi nam o do,
+# khong co lenh CLI nao in ra. Token di qua BIEN MOI TRUONG chu khong qua
+# argv: argv cua moi tien trinh la cong khai voi `ps`.
+usage_one() {
+  local acc="$1" out_file="$2" tok=""
+  if [[ "$acc" == "main" ]]; then
+    tok="$(main_access_token)" || { printf 'ERR\tkhong doc duoc credential cua main trong Keychain\n' > "$out_file"; return; }
+  else
+    tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)" \
+      || { printf 'ERR\tmat token — chay: claude-acc add %s\n' "$acc" > "$out_file"; return; }
+  fi
+
+  CLAUDE_ACC_TOK="$tok" python3 - > "$out_file" <<'PYEOF'
+import json, os, sys, urllib.request, urllib.error
+
+body = json.dumps({"model": "claude-haiku-4-5-20251001", "max_tokens": 1,
+                   "messages": [{"role": "user", "content": "hi"}]}).encode()
+req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
+    "Authorization": "Bearer " + os.environ["CLAUDE_ACC_TOK"],
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": "oauth-2025-04-20",
+    "content-type": "application/json",
+})
+code, h = 0, None
+try:
+    r = urllib.request.urlopen(req, timeout=60)
+    code, h = r.status, r.headers
+except urllib.error.HTTPError as e:
+    # 429 = het han muc: van tra ve day du headers, van doc duoc.
+    code, h = e.code, e.headers
+except Exception as e:
+    print("ERR\t%s" % str(e)[:70]); sys.exit()
+
+def g(name, default=""):
+    return h.get("anthropic-ratelimit-unified-" + name, default) if h else default
+
+if code == 401 or code == 403:
+    print("EXPIRED\tHTTP %d — token khong con dung duoc" % code); sys.exit()
+if not g("5h-status") and code >= 400:
+    print("ERR\tHTTP %d" % code); sys.exit()
+
+print("\t".join(["OK", g("5h-utilization", "?"), g("5h-reset", "0"), g("5h-status", "?"),
+                 g("7d-utilization", "?"), g("7d-reset", "0"), g("7d-status", "?"),
+                 g("overage-status", "")]))
+PYEOF
+}
+
+cmd_usage() {
+  local accs=() a
+  if [[ $# -eq 0 ]]; then
+    accs+=("main")
+    while IFS= read -r a; do [[ -n "$a" ]] && accs+=("$a"); done < "$LIST"
+  else
+    for a in "$@"; do
+      case "$a" in
+        -*)   die "lenh nay chi nhan ten acc. Vi du: claude-acc usage work personal" ;;
+        main) ;;
+        *)    valid_name "$a"; known "$a" || die "khong biet acc '$a'. Xem: claude-acc ls" ;;
+      esac
+      accs+=("$a")
+    done
+  fi
+
+  local base; base="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-usage.XXXXXX")" || die "khong tao duoc thu muc tam."
+  chmod 700 "$base"
+  trap 'rm -rf "$base"' EXIT INT TERM
+
+  info "${c_dim}Hoi han muc cua ${#accs[@]} acc (song song)…${c_0}"
+  info "${c_y}Luu y: viec hoi la mot request that, nen no CUNG mo cua so 5h cua acc do.${c_0}"
+  for a in "${accs[@]}"; do usage_one "$a" "$base/res.$a" & done
+  wait
+
+  printf '\n'
+  python3 - "$base" "${accs[@]}" <<'PYEOF'
+import os, sys, time
+
+G, R, Y, D, Z = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
+base, names = sys.argv[1], sys.argv[2:]
+
+def read(n):
+    try:
+        return open(os.path.join(base, "res." + n)).read().strip()
+    except Exception:
+        return "ERR\tkhong co ket qua"
+
+def left_of(ts):
+    try:
+        ts = int(ts)
+    except Exception:
+        return None
+    return ts - int(time.time()) if ts > 0 else None
+
+def short(ts, with_date=False):
+    """13:40 (con 3h33)  /  11/09 (con 6 ngay)"""
+    lf = left_of(ts)
+    if lf is None:
+        return ""
+    t = time.localtime(int(ts))
+    when = time.strftime("%d/%m" if with_date else "%H:%M", t)
+    if lf <= 0:
+        return when
+    d, rem = divmod(lf, 86400)
+    h, m = divmod(rem // 60, 60)
+    if d >= 2:
+        gap = "%d ngay" % d
+    elif d == 1:
+        gap = "1 ngay %dh" % h
+    elif h:
+        gap = "%dh%02d" % (h, m)
+    else:
+        gap = "%dp" % m
+    return "%s (con %s)" % (when, gap)
+
+ANSI = __import__("re").compile("\033\\[[0-9;]*m")
+
+def pad_vis(text, width):
+    """Padding tinh theo do dai NHIN THAY — ma mau ANSI khong chiem cot."""
+    return text + " " * max(0, width - len(ANSI.sub("", text)))
+
+def pct(u):
+    try:
+        return float(u)
+    except Exception:
+        return None
+
+def cell(u):
+    v = pct(u)
+    if v is None:
+        return "??????????   ?%"
+    n = max(0, min(10, int(round(v * 10))))
+    return "%s %3d%%" % ("#" * n + "." * (10 - n), round(v * 100))
+
+print("%s  %-10s %-30s %s%s" % (Y, "acc", "cua so 5h", "cua so 7 ngay", Z))
+best = []
+for name in names:
+    f = read(name).split("\t")
+    if f[0] != "OK":
+        note = f[1] if len(f) > 1 else ""
+        print("  %s%-10s%s %s%s%s" % (R, name, Z, D, note, Z))
+        continue
+    u5, r5, s5, u7, r7, s7 = f[1], f[2], f[3], f[4], f[5], f[6]
+    ok = (s5 == "allowed" and s7 == "allowed")
+    if s5 != "allowed":
+        five = "%sHET HAN MUC%s  ve luc %s" % (R, Z, short(r5))
+    else:
+        five = "%s  %s" % (cell(u5), short(r5))
+    seven = ("%sHET%s" % (R, Z)) if s7 != "allowed" else "%3d%%  %s" % (
+        round((pct(u7) or 0) * 100), short(r7, with_date=True))
+    mark = "%s*%s" % (G, Z) if ok else "%s!%s" % (R, Z)
+    print(" %s %-10s %s %s" % (mark, name, pad_vis(five, 30), seven))
+    if ok and pct(u5) is not None:
+        best.append((pct(u5), name))
+
+if len(best) > 1:
+    best.sort()
+    print("\n%sCon nhieu nhat: %s%s%s (5h moi dung %d%%)" % (
+        D, Z, best[0][1], D, round(best[0][0] * 100)))
+    print("  -> dung cho repo dang lam:  claude-acc switch %s --here%s" % (best[0][1], Z))
+PYEOF
+  rm -rf "$base"; trap - EXIT INT TERM
+}
+
 cmd_login() {
   local browser=""
   while [[ $# -gt 0 ]]; do
@@ -1103,6 +1287,9 @@ ${c_b}LENH${c_0}
   trigger [ten...]       Mo cua so 5h cho cac acc (mac dinh: TAT CA, ke ca main)
                          bang mot request nho, chay song song. Nêu ten acc de
                          chi trigger dung nhung acc do.
+  usage [ten...]         Xem da tieu bao nhieu % cua so 5h / 7 ngay va bao gio
+                         reset, cho tung acc (mac dinh: TAT CA). Chinh viec hoi
+                         cung la mot request nen CUNG mo cua so 5h cua acc do.
   reassign <cu> <moi>    Chuyen MOI thu muc dang ghim <cu> sang <moi>
   sync                   Ghi lai token cho moi thu muc da ghim (sau khi \`add\`
                          lai mot acc, hoac khi nghi file trong repo bi sua)
@@ -1160,6 +1347,7 @@ case "${1:-help}" in
   add)                shift; cmd_add "$@" ;;
   here|pin)           shift; cmd_here "$@" ;;
   trigger|warm)       shift; cmd_warm "$@" ;;
+  usage|quota)        shift; cmd_usage "$@" ;;
   reassign)           shift; cmd_reassign "$@" ;;
   sync)               shift; cmd_sync "$@" ;;
   switch|use)
