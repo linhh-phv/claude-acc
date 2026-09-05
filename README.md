@@ -10,7 +10,7 @@ macOS Claude Code stores exactly one credential in the system Keychain. Logging 
 
 One account ("`main`") stays logged in normally, in the Keychain — it's the only one with full features (claude.ai connectors, Remote Control, `/schedule`). Every other account gets a **long-lived OAuth token** (`claude setup-token`, valid ~1 year) stored under its own name. Because `claude setup-token` never touches the Keychain, adding or switching accounts never logs `main` out.
 
-`claude-acc switch <name>` writes the active token into the `env` block of `~/.claude/settings.json` — the config file the CLI and the Cursor/VS Code extension both read — so one command changes the account everywhere. Reload the Cursor window and it's already picked up.
+`claude-acc switch <name>` writes the active token into the `env` block of `~/.claude/settings.json` — the config file the CLI and the Cursor/VS Code extension both read — so one command changes the account everywhere. It takes effect immediately: no window reload, no restart, not even a new chat tab.
 
 ## Requirements
 
@@ -56,7 +56,21 @@ claude-acc switch main   # back to your main account
 claude-acc ls            # see what's configured and which account is active
 ```
 
-After every `switch`, reload Cursor/VS Code (`Cmd+Shift+P` → `Developer: Reload Window`) so the extension picks up the change.
+### `switch` takes effect immediately
+
+No reload, no restart. Claude Code re-reads `~/.claude/settings.json` on *every* request
+rather than once at startup, so the next thing you send — in the terminal or in an
+already-open Cursor chat — goes out under the new account.
+
+Measured on extension 2.1.260 and on 2.1.198: swap the token mid-session in a running
+`stream-json` session and the very next turn fails with `401 OAuth access token is invalid`.
+
+The flip side is worth knowing: because it applies per request, `switch` also moves
+**sessions that are already running** in your other windows and repos onto the new
+account, mid-prompt. They don't get killed — the next turn is simply billed to the new
+account. If you want one repo pinned to its own account regardless, put the `env` block
+in that repo's `.claude/settings.local.json` instead; repo-level settings override the
+user-level file (and keep that path in `.gitignore` — the token is plaintext).
 
 ## Commands
 

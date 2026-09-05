@@ -309,6 +309,12 @@ EOF
 # Da do: khoi `env` DE LEN ca credential Keychain lan bien moi truong cua
 # tien trinh — nen day la cong tac duy nhat, khong the dung song song voi
 # `claude-acc run`.
+#
+# Da do lai 2026-09-05 (extension 2.1.260 va ca ban cu 2.1.198): CLI doc lai
+# settings.json o TUNG request, khong phai mot lan luc khoi dong. Bang chung:
+# doi token thanh rac giua mot phien stream-json -> luot ke tiep bao 401 ngay.
+# Vi vay switch AN NGAY, khong can Reload Window — va cung vi vay no ap len
+# ca nhung phien dang chay do o cua so/repo khac.
 cmd_switch() {
   local name="${1:-}"
   [[ -n "$name" ]] || die "dung: claude-acc switch <ten-acc|main>"
@@ -355,7 +361,9 @@ os.replace(tmp,p)
     info "${c_g}Da chuyen sang '$name'${c_0} (token)."
     info "${c_y}Luu y: token nam DANG VAN BAN trong $SETTINGS (quyen 600).${c_0}"
   fi
-  info "${c_b}Cursor/VS Code: Cmd+Shift+P -> 'Developer: Reload Window' de ap dung.${c_0}"
+  info "${c_b}An ngay — KHONG can Reload Window.${c_0}"
+  info "${c_dim}CLI doc lai settings.json o TUNG request, nen ca nhung phien${c_0}"
+  info "${c_dim}dang chay (moi cua so, moi repo) cung doi sang acc nay ngay.${c_0}"
 
   info "${c_dim}Kiem tra bang mot request that…${c_0}"
   cmd_check "$name"
@@ -574,9 +582,9 @@ ${c_b}LENH${c_0}
       --clip               Lay token tu clipboard, khong hoi gi
       --stdin              Doc token tu stdin:  pbpaste | claude-acc add x --stdin
       --no-setup           Bo qua buoc sinh token (khi da co token san)
-  switch <ten|main>      Doi acc cho CA Cursor/VS Code GUI lan terminal.
-                         Ghi vao khoi env cua ~/.claude/settings.json, roi
-                         Reload Window trong Cursor. DAY LA LENH CHINH DE DOI ACC.
+  switch <ten|main>      Doi acc cho CA Cursor/VS Code GUI lan terminal, AN NGAY
+                         — khong can Reload Window. DAY LA LENH CHINH DE DOI ACC.
+                         Luu y: ap ngay cho CA CAC PHIEN DANG CHAY o moi repo.
   ls                     Liet ke acc (main + cac acc phu, kem tinh trang token)
   check <ten|main>       Goi mot request that de xac nhan acc do con dung duoc
   login [--browser <app>]  Dang nhap acc 'main' (ghi de Keychain), chon browser
