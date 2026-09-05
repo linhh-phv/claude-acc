@@ -20,6 +20,7 @@ VERSION="1.0.0"
 SVC="claude-code-token"
 CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/claude-acc"
 LIST="$CFG_DIR/accounts"
+REPOS="$CFG_DIR/repos"
 SETTINGS="$HOME/.claude/settings.json"
 
 c_dim=$'\033[2m'; c_b=$'\033[1m'; c_r=$'\033[31m'; c_g=$'\033[32m'; c_y=$'\033[33m'; c_0=$'\033[0m'
@@ -33,6 +34,7 @@ command -v claude >/dev/null 2>&1 || die "khong tim thay \`claude\` trong PATH."
 
 mkdir -p "$CFG_DIR"
 touch "$LIST"
+touch "$REPOS"
 
 # ---------- helpers -------------------------------------------------------
 
@@ -66,6 +68,223 @@ try: d=json.load(open(sys.argv[1]))
 except Exception: sys.exit(0)
 print((d.get("env") or {}).get("CLAUDE_ACC_NAME") or "")
 ' "$SETTINGS" 2>/dev/null || true
+}
+
+# ---------- ghim theo thu muc (per-repo / per-workspace) -------------------
+#
+# Da do 2026-09-05, khong phai suy doan:
+#   - `.claude/settings.local.json` DE LEN `.claude/settings.json` va de len
+#     ca ~/.claude/settings.json; khoi `env` MERGE theo tung khoa, nen ghim
+#     acc khong lam mat permissions/MCP dang co trong file.
+#   - Settings cap repo CHI an khi `claude` chay DUNG o thu muc chua .claude/
+#     — chay tu thu muc con KHONG ke thua (do bang token rac: root 401,
+#     apps/web chay ngon).
+#   - Trong Cursor/VS Code multi-root workspace, MOI tab chat deu chay voi
+#     cwd = folder [0] cua file .code-workspace (do bang cwd tien trinh that:
+#     3 phien cua workspace a-workspace deu o folder [0], du tab dang
+#     lam viec tren worktree khac).
+# => Cho nen ghim phai nham vao thu muc GUI thuc su chay, khong phai thu muc
+#    ban dang dung o terminal.
+
+# In ra: <loai>\t<thu-muc-dich>\t<ghi-chu>
+#   WS    -> nam trong mot .code-workspace; dich la folder [0]
+#   AMBIG -> nhieu workspace khac nhau cung chua thu muc nay
+#   NONE  -> khong thuoc workspace nao
+gui_root() {
+  python3 - "$1" <<'PYEOF'
+import json, os, re, sys, glob
+
+start = os.path.realpath(sys.argv[1])
+cands, seen = [], set()
+d = start
+for _ in range(6):
+    parent = os.path.dirname(d)
+    if parent == d:
+        break
+    for ws in sorted(glob.glob(os.path.join(parent, "*.code-workspace"))):
+        if ws in seen:
+            continue
+        seen.add(ws)
+        try:
+            raw = open(ws, encoding="utf-8").read()
+            try:
+                data = json.loads(raw)
+            except Exception:
+                data = json.loads(re.sub(r"^\s*//.*$", "", raw, flags=re.M))
+        except Exception:
+            continue
+        base = os.path.dirname(ws)
+        paths = [os.path.realpath(os.path.join(base, f["path"]))
+                 for f in (data.get("folders") or []) if f.get("path")]
+        if not paths:
+            continue
+        if any(start == p or start.startswith(p + os.sep) for p in paths):
+            cands.append((ws, paths[0], len(paths)))
+    d = parent
+
+if not cands:
+    print("NONE\t\t")
+else:
+    roots = {c[1] for c in cands}
+    if len(roots) > 1:
+        names = ", ".join(os.path.basename(c[0]) for c in cands)
+        print("AMBIG\t\t" + names)
+    else:
+        ws, root, n = cands[0]
+        print("WS\t%s\t%s (%d folder)" % (root, os.path.basename(ws), n))
+PYEOF
+}
+
+# Thu muc dich de ghim, tinh tu thu muc hien tai.
+# stdout: <dir>\t<ghi-chu>   (ghi-chu rong neu la repo thuong)
+resolve_target() {
+  local base="${1:-$PWD}" line kind dir note
+  line="$(gui_root "$base")"
+  kind="${line%%$'\t'*}"; line="${line#*$'\t'}"
+  dir="${line%%$'\t'*}"; note="${line#*$'\t'}"
+
+  if [[ "$kind" == "AMBIG" ]]; then
+    die "thu muc nay nam trong NHIEU workspace khac nhau ($note).
+     Moi workspace chay claude o folder [0] cua no, nen khong doan duoc.
+     Chi dinh thang: claude-acc here <ten> --at <duong-dan-folder-0>"
+  fi
+  if [[ "$kind" == "WS" && -n "$dir" ]]; then
+    printf '%s\t%s\n' "$dir" "$note"
+    return
+  fi
+  # khong thuoc workspace: dung git root neu co, khong thi chinh thu muc nay
+  local top
+  if top="$(git -C "$base" rev-parse --show-toplevel 2>/dev/null)" && [[ -n "$top" ]]; then
+    printf '%s\t\n' "$top"
+  else
+    printf '%s\t\n' "$(cd "$base" && pwd -P)"
+  fi
+}
+
+repo_file() { printf '%s/.claude/settings.local.json' "$1"; }
+
+# Ten acc dang ghim tai <dir> (rong neu khong ghim). "main" = dung Keychain.
+repo_pin() {
+  local f; f="$(repo_file "$1")"
+  [[ -f "$f" ]] || return 0
+  python3 - "$f" <<'PYEOF' 2>/dev/null || true
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+env = d.get("env") or {}
+name = env.get("CLAUDE_ACC_NAME")
+if name:
+    print(name)
+elif env.get("CLAUDE_CODE_OAUTH_TOKEN") == "":
+    print("main")
+PYEOF
+}
+
+# Chan nguy co commit nham token. Khong sua .gitignore cua repo (nhat la repo
+# cong ty) — dung .git/info/exclude: chi co tren may nay, khong vao lich su.
+guard_git() {
+  local dir="$1" rel=".claude/settings.local.json"
+  git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || return 0
+
+  if git -C "$dir" ls-files --error-unmatch "$rel" >/dev/null 2>&1; then
+    die "$rel cua repo nay DANG DUOC GIT THEO DOI — ghi token vao do la mot
+     buoc di thang toi viec commit nham token len remote.
+     Go theo doi truoc roi chay lai:
+       git -C $dir rm --cached $rel"
+  fi
+
+  git -C "$dir" check-ignore -q "$rel" 2>/dev/null && return 0
+
+  local common
+  common="$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ -z "$common" ]]; then
+    common="$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null || true)"
+    [[ "$common" == /* ]] || common="$dir/$common"
+  fi
+  [[ -d "$common" ]] || return 0
+  mkdir -p "$common/info"
+  if ! grep -qxF "$rel" "$common/info/exclude" 2>/dev/null; then
+    printf '%s\n' "$rel" >> "$common/info/exclude"
+    info "${c_dim}  (da them $rel vao .git/info/exclude — chi may nay, khong vao repo)${c_0}"
+  fi
+}
+
+# So dang ky cac thu muc da ghim: <path>\t<acc>. Chi de `ls`/`reassign`/`sync`
+# biet duong ma tim — nguon su that van la file trong tung thu muc.
+reg_set() {
+  python3 - "$REPOS" "$1" "$2" <<'PYEOF'
+import os, sys
+reg, path, acc = sys.argv[1], sys.argv[2], sys.argv[3]
+rows = []
+if os.path.exists(reg):
+    for ln in open(reg, encoding="utf-8"):
+        ln = ln.rstrip("\n")
+        if not ln.strip():
+            continue
+        p = ln.split("\t")[0]
+        if p != path:
+            rows.append(ln)
+rows.append("%s\t%s" % (path, acc))
+rows.sort()
+fd = os.open(reg + ".t", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    f.write("\n".join(rows) + "\n")
+os.replace(reg + ".t", reg)
+PYEOF
+}
+
+reg_del() {
+  python3 - "$REPOS" "$1" <<'PYEOF'
+import os, sys
+reg, path = sys.argv[1], sys.argv[2]
+if not os.path.exists(reg):
+    sys.exit(0)
+rows = [ln.rstrip("\n") for ln in open(reg, encoding="utf-8")
+        if ln.strip() and ln.split("\t")[0] != path]
+fd = os.open(reg + ".t", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    f.write(("\n".join(rows) + "\n") if rows else "")
+os.replace(reg + ".t", reg)
+PYEOF
+}
+
+# Ghi ghim vao <dir>. name=main -> token RONG (da do: de len token cap tren
+# roi roi ve Keychain). Merge vao file co san, atomic, 600.
+write_repo_pin() {
+  local dir="$1" name="$2" tok="$3"
+  mkdir -p "$dir/.claude"
+  CLAUDE_ACC_TOK="$tok" python3 - "$(repo_file "$dir")" "$name" <<'PYEOF' \
+    || die "khong sua duoc $(repo_file "$dir") (file loi cu phap JSON?)"
+import json, os, sys
+p, name = sys.argv[1], sys.argv[2]
+tok = os.environ.get("CLAUDE_ACC_TOK", "")
+d = {}
+if os.path.exists(p):
+    with open(p, encoding="utf-8") as f:
+        d = json.load(f)          # loi cu phap -> nem, khong ghi de
+env = d.get("env") or {}
+if name == "off":
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    env.pop("CLAUDE_ACC_NAME", None)
+else:
+    env["CLAUDE_CODE_OAUTH_TOKEN"] = tok   # "" khi name == main
+    env["CLAUDE_ACC_NAME"] = name
+if env:
+    d["env"] = env
+elif "env" in d:
+    del d["env"]
+if not d:
+    if os.path.exists(p):
+        os.remove(p)
+    sys.exit(0)
+fd = os.open(p + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+os.replace(p + ".tmp", p)
+PYEOF
 }
 
 # Thu mot request that. `claude auth status` chi bao NGUON credential chu khong
@@ -370,6 +589,136 @@ os.replace(tmp,p)
 }
 
 # Dang nhap acc "main" (ghi vao Keychain), chon duoc browser.
+# Ghim acc cho MOT THU MUC (repo hoac workspace), doc lap voi ghim toan cuc.
+cmd_here() {
+  local name="" at="" check=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --at)  at="${2:-}"; [[ -n "$at" ]] || die "--at can mot duong dan"; shift 2 ;;
+      --at=*) at="${1#*=}"; shift ;;
+      --no-check) check=0; shift ;;
+      -*)    die "tuy chon khong biet: '$1'" ;;
+      *)     [[ -z "$name" ]] || die "chi nhan MOT ten acc (nhan duoc them: '$1')"
+             name="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "dung: claude-acc here <ten-acc|main|off> [--at <thu-muc>]"
+
+  local dir note=""
+  if [[ -n "$at" ]]; then
+    [[ -d "$at" ]] || die "khong thay thu muc: $at"
+    dir="$(cd "$at" && pwd -P)"
+  else
+    local line; line="$(resolve_target "$PWD")"
+    dir="${line%%$'\t'*}"; note="${line#*$'\t'}"
+  fi
+
+  local tok=""
+  case "$name" in
+    off)  ;;
+    main) ;;
+    *)    valid_name "$name"; tok="$(token_of "$name")" ;;
+  esac
+
+  if [[ "$name" == "off" ]]; then
+    local cur; cur="$(repo_pin "$dir")"
+    [[ -n "$cur" ]] || die "thu muc nay chua ghim acc nao: $dir"
+    write_repo_pin "$dir" off ""
+    reg_del "$dir"
+    info "${c_g}Da bo ghim${c_0} cho: $dir"
+    info "${c_dim}Tu gio thu muc nay theo acc toan cuc (claude-acc switch).${c_0}"
+    return
+  fi
+
+  guard_git "$dir"
+  write_repo_pin "$dir" "$name" "$tok"
+  reg_set "$dir" "$name"
+
+  if [[ "$name" == "main" ]]; then
+    info "${c_g}Da ghim 'main'${c_0} (Keychain) cho: $dir"
+  else
+    info "${c_g}Da ghim '$name'${c_0} cho: $dir"
+    info "${c_y}Token nam DANG VAN BAN trong $(repo_file "$dir") (quyen 600).${c_0}"
+  fi
+  [[ -n "$note" ]] && info "${c_dim}  $note — moi tab chat cua workspace nay deu chay o do,${c_0}" \
+                   && info "${c_dim}  nen ghim ap cho ca workspace, khong rieng mot worktree.${c_0}"
+
+  local here_now; here_now="$(cd "$PWD" && pwd -P)"
+  if [[ "$here_now" != "$dir" ]]; then
+    info "${c_dim}  (ban dang dung o $here_now — ghi vao thu muc tren vi settings cap${c_0}"
+    info "${c_dim}   repo chi an o dung thu muc claude chay, khong ke thua xuong con.)${c_0}"
+  fi
+
+  info "${c_b}An ngay${c_0} — khong can Reload Window, khong can mo tab chat moi."
+  [[ "$check" == 1 ]] || return 0
+  info "${c_dim}Kiem tra bang mot request that o dung thu muc do…${c_0}"
+  local out
+  if out="$(cd "$dir" && env -u CLAUDE_CODE_OAUTH_TOKEN claude -p 'reply with exactly: OK' --model haiku 2>&1)" \
+     && [[ "$out" == *OK* ]]; then
+    info "${c_g}✓ acc '$name' goi duoc API tai thu muc do.${c_0}"
+  else
+    info "${c_r}✗ ghim roi nhung KHONG goi duoc API tai do:${c_0}"
+    info "  $(printf '%s' "$out" | head -2)"
+    return 1
+  fi
+}
+
+# Doi hang loat: moi thu muc dang dung <cu> chuyen sang <moi>. Dung khi mot
+# acc gan cham limit va muon san tai sang acc khac.
+cmd_reassign() {
+  local old="${1:-}" new="${2:-}"
+  [[ -n "$old" && -n "$new" ]] || die "dung: claude-acc reassign <acc-cu> <acc-moi|main>"
+  local tok=""
+  if [[ "$new" != "main" ]]; then valid_name "$new"; tok="$(token_of "$new")"; fi
+
+  local n=0 missing=0 dir acc
+  while IFS=$'\t' read -r dir acc; do
+    [[ -n "$dir" ]] || continue
+    [[ "$acc" == "$old" ]] || continue
+    if [[ ! -d "$dir" ]]; then
+      info "${c_y}  bo qua (thu muc khong con): $dir${c_0}"; missing=$((missing+1)); continue
+    fi
+    guard_git "$dir"
+    write_repo_pin "$dir" "$new" "$tok"
+    reg_set "$dir" "$new"
+    info "  $dir"
+    n=$((n+1))
+  done < "$REPOS"
+
+  [[ $n -gt 0 ]] || die "khong co thu muc nao dang ghim '$old'."
+  info "${c_g}Da chuyen $n thu muc tu '$old' sang '$new'.${c_0}"
+  [[ $missing -gt 0 ]] && info "${c_dim}($missing thu muc trong so dang ky da khong con — chay \`claude-acc sync\` de don.)${c_0}"
+  info "${c_dim}An ngay cho ca cac phien dang mo o nhung thu muc do.${c_0}"
+}
+
+# Ghi lai token hien tai vao moi thu muc da ghim. Dung sau khi `add` lai mot
+# acc (token moi) hoac khi nghi ngo file trong repo bi sua/mat.
+cmd_sync() {
+  local n=0 fixed=0 gone=0 dir acc
+  while IFS=$'\t' read -r dir acc; do
+    [[ -n "$dir" ]] || continue
+    if [[ ! -d "$dir" ]]; then
+      info "${c_y}  don khoi so dang ky (thu muc khong con): $dir${c_0}"
+      reg_del "$dir"; gone=$((gone+1)); continue
+    fi
+    local tok=""
+    if [[ "$acc" != "main" ]]; then
+      if ! tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)"; then
+        info "${c_r}  bo qua $dir — mat token cua '$acc' (chay: claude-acc add $acc)${c_0}"
+        continue
+      fi
+    fi
+    local before; before="$(repo_pin "$dir")"
+    guard_git "$dir"
+    write_repo_pin "$dir" "$acc" "$tok"
+    [[ "$before" == "$acc" ]] || { info "  sua lai: $dir ($before -> $acc)"; fixed=$((fixed+1)); }
+    n=$((n+1))
+  done < "$REPOS"
+  info "${c_g}Da dong bo $n thu muc.${c_0}"
+  [[ $fixed -gt 0 ]] && info "${c_dim}($fixed cho lech so voi so dang ky, da ghi lai.)${c_0}"
+  [[ $gone -gt 0 ]] && info "${c_dim}($gone thu muc khong con, da don khoi so dang ky.)${c_0}"
+}
+
 cmd_login() {
   local browser=""
   while [[ $# -gt 0 ]]; do
@@ -439,13 +788,32 @@ print(walk(d) or "")
 ' 2>/dev/null || true)"
 
   local pin; pin="$(pinned_acc)"
-  if [[ -n "$pin" ]]; then
-    printf '%sDANG GHIM: %s%s %s(GUI + terminal deu dung acc nay)%s\n\n' \
-      "$c_b" "$pin" "$c_0" "$c_dim" "$c_0"
+  printf '%sTOAN CUC%s  %s  %s(~/.claude/settings.json)%s\n' \
+    "$c_b" "$c_0" "${pin:-main}" "$c_dim" "$c_0"
+
+  # Chay claude o THU MUC NAY thi acc nao that su co hieu luc? Settings cap
+  # repo chi an o dung thu muc chua .claude/, nen phai hoi theo tung thu muc.
+  local hp; hp="$(repo_pin "$(pwd -P)")"
+  if [[ -n "$hp" ]]; then
+    printf '%sTAI DAY%s   %s  %s(ghim cua %s)%s\n' \
+      "$c_b" "$c_0" "$hp" "$c_dim" "$(pwd -P)" "$c_0"
   else
-    printf '%sDANG GHIM: main%s %s(chua ghim gi — dung credential Keychain)%s\n\n' \
-      "$c_b" "$c_0" "$c_dim" "$c_0"
+    printf '%sTAI DAY%s   %s  %s(khong ghim rieng — theo toan cuc)%s\n' \
+      "$c_b" "$c_0" "${pin:-main}" "$c_dim" "$c_0"
   fi
+
+  # GUI cua Cursor/VS Code chay o folder [0] cua workspace, khong phai o thu
+  # muc ban dang dung — neu hai cho lech nhau thi noi ro.
+  local line gdir gnote gpin
+  line="$(resolve_target "$PWD" 2>/dev/null || true)"
+  gdir="${line%%$'\t'*}"; gnote="${line#*$'\t'}"
+  if [[ -n "$gdir" && "$gdir" != "$(pwd -P)" ]]; then
+    gpin="$(repo_pin "$gdir")"
+    printf '%sGUI%s       %s  %s(%s%s)%s\n' \
+      "$c_b" "$c_0" "${gpin:-${pin:-main}}" "$c_dim" "$gdir" \
+      "${gnote:+ — $gnote}" "$c_0"
+  fi
+  printf '\n'
 
   printf '%smain%s  %s(Keychain — day du connectors, Remote Control)%s\n' \
     "$c_b" "$c_0" "$c_dim" "$c_0"
@@ -464,6 +832,22 @@ print(walk(d) or "")
   else
     printf '\n%schua co acc phu nao. Them bang: claude-acc add <ten>%s\n' "$c_dim" "$c_0"
   fi
+
+  if [[ -s "$REPOS" ]]; then
+    printf '\n%sGHIM THEO THU MUC%s %s(claude-acc here)%s\n' "$c_b" "$c_0" "$c_dim" "$c_0"
+    local d a mark
+    while IFS=$'\t' read -r d a; do
+      [[ -n "$d" ]] || continue
+      mark=" "
+      [[ "$d" == "$(pwd -P)" ]] && mark="*"
+      if [[ -d "$d" ]]; then
+        printf '  %s %-8s %s\n' "$mark" "$a" "${d/#$HOME/~}"
+      else
+        printf '  %s %-8s %s %s(thu muc khong con — claude-acc sync)%s\n' \
+          "$mark" "$a" "${d/#$HOME/~}" "$c_dim" "$c_0"
+      fi
+    done < "$REPOS"
+  fi
 }
 
 cmd_run() {
@@ -474,8 +858,17 @@ cmd_run() {
 
   # Khoi `env` trong settings.json de len bien moi truong (da do), nen khi da
   # ghim thi `run` khong doi duoc acc nua — bao thang thay vi chay sai am tham.
+  # Ghim cap thu muc de len ca ghim toan cuc lan bien moi truong, nen phai
+  # kiem no TRUOC — neu khong `run` se chay sai acc mot cach am tham.
+  local hpin; hpin="$(repo_pin "$(pwd -P)")"
+  if [[ -n "$hpin" && "$hpin" != "$name" ]]; then
+    die "thu muc nay dang GHIM acc '$hpin' ($(repo_file "$(pwd -P)")) — no de len \`run\`.
+     Doi ghim:  claude-acc here $name
+     Bo ghim :  claude-acc here off"
+  fi
+
   local pin; pin="$(pinned_acc)"
-  if [[ -n "$pin" && "$pin" != "$name" ]]; then
+  if [[ -n "$pin" && -z "$hpin" && "$pin" != "$name" ]]; then
     if [[ "$name" == "main" ]]; then
       die "dang GHIM acc '$pin' trong ~/.claude/settings.json — no de len \`run\`.
      Bo ghim: claude-acc switch main"
@@ -546,6 +939,11 @@ cmd_uninstall() {
   info "${c_b}Se go bo:${c_0}"
   [[ -s "$LIST" ]] && while IFS= read -r a; do [[ -n "$a" ]] && info "  - token Keychain cua '$a'"; done < "$LIST"
   info "  - $CFG_DIR (danh sach acc phu)"
+  if [[ -s "$REPOS" ]]; then
+    while IFS=$'\t' read -r _d _a; do
+      [[ -n "$_d" ]] && info "  - bo ghim + xoa token trong $(repo_file "$_d")"
+    done < "$REPOS"
+  fi
   [[ -n "$(pinned_acc)" ]] && info "  - bo ghim trong $SETTINGS (dua ve 'main')"
   [[ -f "$SETTINGS.bak-claude-acc" ]] && info "  - $SETTINGS.bak-claude-acc (ban sao luu, con chua token cu)"
   local self; self="$(command -v claude-acc 2>/dev/null || printf '%s' "$0")"
@@ -560,6 +958,14 @@ cmd_uninstall() {
       [[ -n "$a" ]] || continue
       security delete-generic-password -s "$SVC" -a "$a" >/dev/null 2>&1 || true
     done < "$LIST"
+  fi
+  # Token con nam DANG VAN BAN trong tung thu muc da ghim — phai don TRUOC
+  # khi xoa $CFG_DIR, vi so dang ky (duong di toi cac file do) nam trong do.
+  if [[ -s "$REPOS" ]]; then
+    while IFS=$'\t' read -r _d _a; do
+      [[ -n "$_d" && -d "$_d" ]] || continue
+      write_repo_pin "$_d" off "" 2>/dev/null || info "${c_y}  khong don duoc: $(repo_file "$_d")${c_0}"
+    done < "$REPOS"
   fi
   [[ -n "$(pinned_acc)" ]] && cmd_switch main >&2 || true
   # cmd_switch main o tren TU TAO mot ban backup moi (chua token cua acc vua
@@ -585,6 +991,14 @@ ${c_b}LENH${c_0}
   switch <ten|main>      Doi acc cho CA Cursor/VS Code GUI lan terminal, AN NGAY
                          — khong can Reload Window. DAY LA LENH CHINH DE DOI ACC.
                          Luu y: ap ngay cho CA CAC PHIEN DANG CHAY o moi repo.
+  here <ten|main|off>    Ghim acc RIENG cho thu muc lam viec hien tai, doc lap
+      --at <thu-muc>       voi ghim toan cuc. Dung de moi repo mot acc, khoi
+      --no-check           (bo qua buoc goi thu API sau khi ghim)
+                           don limit vao mot acc. \`off\` = bo ghim.
+                           (Viet cach khac: claude-acc switch <ten> --here)
+  reassign <cu> <moi>    Chuyen MOI thu muc dang ghim <cu> sang <moi>
+  sync                   Ghi lai token cho moi thu muc da ghim (sau khi \`add\`
+                         lai mot acc, hoac khi nghi file trong repo bi sua)
   ls                     Liet ke acc (main + cac acc phu, kem tinh trang token)
   check <ten|main>       Goi mot request that de xac nhan acc do con dung duoc
   login [--browser <app>]  Dang nhap acc 'main' (ghi de Keychain), chon browser
@@ -603,6 +1017,20 @@ ${c_b}BAT DAU NHANH${c_0}
   claude                                      # dung claude nhu binh thuong
   claude-acc switch main                      # doi ve acc chinh
 
+  cd <repo> && claude-acc here ca-nhan        # rieng repo nay dung acc khac
+  claude-acc here main                        # rieng repo nay dung main
+  claude-acc here off                         # bo ghim rieng cua repo
+  claude-acc reassign ca-nhan acc-2           # acc-1 gan het limit -> san tai
+
+${c_b}GHIM THEO THU MUC — hai dieu PHAI biet (deu da do, khong phai suy doan)${c_0}
+  - Settings cap repo chi an khi \`claude\` chay DUNG o thu muc chua .claude/.
+    Chay tu thu muc con KHONG ke thua — \`cd apps/web && claude\` se am tham
+    dung acc toan cuc. \`claude-acc ls\` cho biet acc nao that su co hieu luc.
+  - Trong Cursor/VS Code multi-root workspace, MOI tab chat deu chay o folder
+    [0] cua file .code-workspace, ke ca khi tab do lam viec tren worktree
+    khac. Nen ghim ap cho CA workspace, khong rieng mot worktree — va
+    \`here\` tu nham vao folder [0] thay vi thu muc ban dang dung.
+
 ${c_b}LUU Y${c_0}
   - Chi acc 'main' co claude.ai connectors, Remote Control va /schedule.
     Chon acc dung nhieu nhat lam main.
@@ -620,7 +1048,20 @@ EOF
 
 case "${1:-help}" in
   add)                shift; cmd_add "$@" ;;
-  switch|use)         shift; cmd_switch "$@" ;;
+  here|pin)           shift; cmd_here "$@" ;;
+  reassign)           shift; cmd_reassign "$@" ;;
+  sync)               shift; cmd_sync "$@" ;;
+  switch|use)
+    shift
+    # `switch <ten> --here` la cach viet khac cua `here <ten>`
+    if printf '%s\n' "$@" | grep -qx -- '--here'; then
+      _args=()
+      for _x in "$@"; do [[ "$_x" == "--here" ]] || _args+=("$_x"); done
+      cmd_here "${_args[@]}"
+    else
+      cmd_switch "$@"
+    fi
+    ;;
   login)              shift; cmd_login "$@" ;;
   rm|remove|del)      shift; cmd_rm "$@" ;;
   ls|list)            shift; cmd_ls "$@" ;;

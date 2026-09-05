@@ -72,13 +72,76 @@ account. If you want one repo pinned to its own account regardless, put the `env
 in that repo's `.claude/settings.local.json` instead; repo-level settings override the
 user-level file (and keep that path in `.gitignore` — the token is plaintext).
 
+## One account per repo
+
+`switch` is global. If you'd rather spread the load — this repo on one account, that
+one on another, so no single account eats the whole limit — pin an account to a
+directory instead:
+
+```bash
+cd ~/work/some-repo
+claude-acc here work        # this repo uses "work"
+claude-acc here main        # this repo uses main (the Keychain account)
+claude-acc here off         # unpin; back to whatever `switch` says
+```
+
+It writes the `env` block into that directory's `.claude/settings.local.json`, which
+overrides the global file. Existing contents are merged, not replaced — your
+`permissions` and MCP entries survive. Like `switch`, it takes effect on the next
+request, in chat tabs that are already open.
+
+When one account gets close to its limit, move everything on it at once:
+
+```bash
+claude-acc reassign work other-account   # every directory pinned to "work"
+claude-acc sync                          # rewrite tokens everywhere (after re-adding an account)
+claude-acc ls                            # who's pinned where, and what's in effect here
+```
+
+### Two things that will bite you if you don't know them
+
+Both measured on this machine, not inferred from docs.
+
+**Repo settings only apply in the exact directory `claude` runs in.** They do not
+cascade into subdirectories. Put a bad token in a repo's `.claude/settings.json`, run
+from the repo root and you get a 401; run the same thing from `apps/web` and it sails
+straight past into the global account. So `cd apps/web && claude` silently ignores the
+pin — which matters most when the global account is your work one. `claude-acc ls`
+prints what is actually in effect where you're standing.
+
+**In a multi-root workspace, every chat tab runs in folder `[0]`.** Measured by reading
+the cwd of the real processes: three chat sessions of a six-folder workspace all ran in
+the first folder of its `.code-workspace`, even though one tab was working on a
+different worktree. So a pin applies to the whole workspace, not to one worktree — and
+`here` aims at folder `[0]` for you rather than at whatever directory your terminal
+happens to be in. It tells you when it does that.
+
+### About the token in your repo
+
+The pin has to contain the real token: the indirection that would avoid it,
+`apiKeyHelper`, hangs the CLI outright (tried both an OAuth token and an API key), so
+it is not an option. `claude-acc` therefore:
+
+- writes the file `600`, atomically;
+- **refuses** to write if `.claude/settings.local.json` is tracked by git, and tells you
+  to `git rm --cached` it first;
+- adds the path to `.git/info/exclude` — not `.gitignore`, so it never touches a file
+  your repo (or your team) has committed;
+- cleans the token out of every pinned directory on `claude-acc uninstall`.
+
+`main` is the exception: pinning `main` writes an empty token, which overrides the
+global one and falls back to the Keychain. No secret is written at all.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `add <name> [--browser <app>]` | Add a secondary account. Runs `claude setup-token`, captures the token automatically (no copy/paste), stores it in the Keychain. |
 | `switch <name\|main>` | **The command you'll use most.** Makes `<name>` (or `main`) the active account for both the CLI and the GUI extension. |
-| `ls` | List configured accounts and which one is currently active. |
+| `here <name\|main\|off>` | Pin an account to the current repo/workspace, independent of the global one. `--at <dir>` to target another directory, `--no-check` to skip the verifying API call. |
+| `reassign <old> <new>` | Move every pinned directory from one account to another — for when `<old>` is near its limit. |
+| `sync` | Rewrite the token in every pinned directory (after re-adding an account), and drop directories that no longer exist. |
+| `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. |
 | `check <name\|main>` | Verify an account's credential still works, with a real API call — not just a config read. |
 | `login [--browser <app>]` | Re-run `claude auth login` for `main` (this overwrites the Keychain — `main` only). |
 | `rm <name>` | Remove a secondary account's token. |
@@ -118,6 +181,9 @@ Your `main` account never has this trade-off: it stays exclusively in the encryp
 - **macOS only.** It shells out to `security`, `pbcopy`/`pbpaste`, and `open -a`.
 - **Only `main` gets claude.ai connectors, Remote Control, and `/schedule`.** Secondary accounts authenticate with a model-only OAuth token.
 - **Session/conversation history is shared** across accounts (`CLAUDE_CONFIG_DIR` isn't split per account), so `-r`/`--resume` under one account can see another's sessions.
+- **A directory pin only works in that exact directory** (see above), and in a
+  multi-root workspace the directory that counts is folder `[0]`, not the worktree you
+  are looking at.
 - **Tokens expire after about a year.** `claude-acc check <name>` will tell you when one has; just `claude-acc add <name>` again.
 - **A token is briefly visible via `ps` while `claude-acc add` writes it to the Keychain.** `security add-generic-password -w <password>` requires the password as a command-line argument — its own man page's only non-interactive option — so for the moment that one command runs, the token is technically readable by another local user running `ps -ef`, or by exec-argv-logging security/EDR software on managed machines. This is a limitation of the macOS `security` CLI itself, not something `claude-acc` can close without reimplementing Keychain writes against the native Keychain Services API. Everywhere else (settings.json writes, subprocess env passing) `claude-acc` avoids putting the token in argv.
 
