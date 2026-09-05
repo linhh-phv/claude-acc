@@ -56,6 +56,27 @@ claude-acc switch main   # back to your main account
 claude-acc ls            # see what's configured and which account is active
 ```
 
+Want this one repo on a different account than everything else? Same command, plus
+`--here`:
+
+```bash
+cd ~/code/some-repo
+claude-acc switch personal --here   # only this repo; the global account is untouched
+```
+
+### The whole thing in six lines
+
+| You want | Run |
+|---|---|
+| Switch account everywhere | `claude-acc switch <name>` |
+| …but leave this repo alone | pin the repo first: `claude-acc switch <name> --here` |
+| This repo on its own account | `cd <repo> && claude-acc switch <name> --here` |
+| This repo back on the main account | `claude-acc switch main --here` |
+| Stop pinning this repo | `claude-acc switch off --here` |
+| Who is being used, and where? | `claude-acc ls` |
+
+Everything takes effect on the next request — no reload, no restart, no new chat tab.
+
 ### `switch` takes effect immediately
 
 No reload, no restart. Claude Code re-reads `~/.claude/settings.json` on *every* request
@@ -65,12 +86,18 @@ already-open Cursor chat — goes out under the new account.
 Measured on extension 2.1.260 and on 2.1.198: swap the token mid-session in a running
 `stream-json` session and the very next turn fails with `401 OAuth access token is invalid`.
 
-The flip side is worth knowing: because it applies per request, `switch` also moves
-**sessions that are already running** in your other windows and repos onto the new
-account, mid-prompt. They don't get killed — the next turn is simply billed to the new
-account. If you want one repo pinned to its own account regardless, put the `env` block
-in that repo's `.claude/settings.local.json` instead; repo-level settings override the
-user-level file (and keep that path in `.gitignore` — the token is plaintext).
+"Immediately" includes prompts that are already mid-flight. A prompt is many requests
+(call a tool, send the result back, call another), and each one re-reads the file.
+Measured: with a prompt already running and its first tool call done, switching at
+t+9s made the *next* step of that same prompt use the new account at t+12s. So:
+
+- The one API call already in flight finishes on the old account — it is on Anthropic's
+  servers, nothing local can recall it.
+- Every step after that uses the new account. A healthy account and the prompt carries
+  straight on; a dead token and that running prompt stops there with a 401.
+
+That reach is the point of `--here`: a pinned repo is not moved by a global `switch`,
+so long-running work there keeps its own account.
 
 ## One account per repo
 
