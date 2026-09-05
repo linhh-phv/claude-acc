@@ -118,6 +118,7 @@ t_vi() {
     ls_gui)         printf '%b' 'GUI     ' ;;
     ls_pin_of)      printf '%b' 'ghim của %s' ;;
     ls_nopin)       printf '%b' 'không ghim riêng — theo toàn cục' ;;
+    ls_here_term)   printf '%b' 'chỉ khi bạn chạy claude từ terminal ở đây — GUI dùng dòng trên' ;;
     ls_main_desc)   printf '%b' 'Keychain — đầy đủ connectors, Remote Control' ;;
     ls_sub)         printf '%b' 'acc phụ' ;;
     ls_sub_desc)    printf '%b' 'token — không có connectors' ;;
@@ -211,6 +212,7 @@ t_vi() {
     here_unpin)     printf '%b' 'Đã bỏ ghim cho: %s' ;;
     err_prefix)     printf '%b' 'lỗi:' ;;
     here_unpin2)    printf '%b' 'Từ giờ thư mục này theo acc toàn cục (claude-acc switch).' ;;
+    here_same)      printf '%b' 'Vẫn là "%s" — thư mục này ghim sẵn acc đó rồi, đã ghi lại token cho chắc: %s' ;;
     here_main)      printf '%b' 'Đã ghim "main"' ;;
     here_main2)     printf '%b' ' (Keychain) cho: %s' ;;
     here_acc)       printf '%b' 'Đã ghim "%s"' ;;
@@ -312,6 +314,7 @@ t_en() {
     ls_gui)         printf '%b' 'GUI     ' ;;
     ls_pin_of)      printf '%b' 'pin of %s' ;;
     ls_nopin)       printf '%b' 'no pin here — follows the global one' ;;
+    ls_here_term)   printf '%b' 'only if you run claude from a terminal here — the GUI uses the row above' ;;
     ls_main_desc)   printf '%b' 'Keychain — full connectors, Remote Control' ;;
     ls_sub)         printf '%b' 'token accounts' ;;
     ls_sub_desc)    printf '%b' 'token — no connectors' ;;
@@ -405,6 +408,7 @@ t_en() {
     here_unpin)     printf '%b' 'Pin removed from: %s' ;;
     err_prefix)     printf '%b' 'error:' ;;
     here_unpin2)    printf '%b' 'This directory now follows the global account (claude-acc switch).' ;;
+    here_same)      printf '%b' 'Still "%s" — this directory was already pinned to it, token rewritten anyway: %s' ;;
     here_main)      printf '%b' 'Pinned "main"' ;;
     here_main2)     printf '%b' ' (Keychain) to: %s' ;;
     here_acc)       printf '%b' 'Pinned "%s"' ;;
@@ -1015,6 +1019,39 @@ os.replace(tmp,p)
 
 # Dang nhap acc "main" (ghi vao Keychain), chon duoc browser.
 # Ghim acc cho MOT THU MUC (repo hoac workspace), doc lap voi ghim toan cuc.
+# Kiem tra mot token bang MOT request API truc tiep.
+#
+# Co y KHONG chay `claude -p` trong repo: repo that cua nguoi dung co the co
+# CLAUDE.md lon, nhieu MCP server va permission rules, va `claude` se chet voi
+# "Prompt is too long · the request is ~200203 tokens (limit 200000)". Do la
+# loi CUA REPO, khong lien quan gi den token — nhung truoc day no bi in ra
+# thanh "ghim roi nhung KHONG goi duoc API", khien mot ghim hoan toan tot
+# trong nhu bi hong.
+probe_token_api() {
+  CLAUDE_ACC_TOK="$1" python3 - <<'PYEOF'
+import json, os, sys, urllib.request, urllib.error
+body = json.dumps({"model": "claude-haiku-4-5-20251001", "max_tokens": 1,
+                   "messages": [{"role": "user", "content": "hi"}]}).encode()
+req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body, headers={
+    "Authorization": "Bearer " + os.environ["CLAUDE_ACC_TOK"],
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": "oauth-2025-04-20",
+    "content-type": "application/json"})
+try:
+    urllib.request.urlopen(req, timeout=60)
+    sys.exit(0)
+except urllib.error.HTTPError as e:
+    # 429 = het han muc, nhung TOKEN VAN DUNG DUOC. Ghim khong hong.
+    if e.code == 429:
+        sys.exit(0)
+    print("HTTP %d" % e.code)
+    sys.exit(1)
+except Exception as e:
+    print(str(e)[:70])
+    sys.exit(1)
+PYEOF
+}
+
 cmd_here() {
   local name="" at="" check=1
   while [[ $# -gt 0 ]]; do
@@ -1055,11 +1092,14 @@ cmd_here() {
     return
   fi
 
+  local was; was="$(repo_pin "$dir")"
   guard_git "$dir"
   write_repo_pin "$dir" "$name" "$tok"
   reg_set "$dir" "$name"
 
-  if [[ "$name" == "main" ]]; then
+  if [[ "$was" == "$name" ]]; then
+    info "${c_g}$(tp here_same "$name" "$dir")${c_0}"
+  elif [[ "$name" == "main" ]]; then
     info "${c_g}$(t here_main)${c_0}$(tp here_main2 "$dir")"
   else
     info "${c_g}$(tp here_acc "$name")${c_0}$(tp here_for "$dir")"
@@ -1077,13 +1117,25 @@ cmd_here() {
   info "${c_b}$(t here_now)${c_0}$(t here_now2)"
   [[ "$check" == 1 ]] || return 0
   info "${c_dim}$(t here_check)${c_0}"
-  local out
-  if out="$(cd "$dir" && env -u CLAUDE_CODE_OAUTH_TOKEN claude -p 'reply with exactly: OK' --model haiku 2>&1)" \
-     && [[ "$out" == *OK* ]]; then
+  local vtok="$tok" out
+  if [[ "$name" == "main" ]]; then
+    vtok="$(main_access_token 2>/dev/null || true)"
+    [[ -n "$vtok" ]] || { info "${c_dim}  $(t usg_nocred)${c_0}"; return 0; }
+  fi
+  if out="$(probe_token_api "$vtok")"; then
     info "${c_g}✓ $(tp here_ok "$name")${c_0}"
+  elif [[ "$name" == "main" ]]; then
+    # accessToken cua main song ngan; nho Claude Code lam moi roi thu lai
+    refresh_main_token
+    vtok="$(main_access_token 2>/dev/null || true)"
+    if [[ -n "$vtok" ]] && out="$(probe_token_api "$vtok")"; then
+      info "${c_g}✓ $(tp here_ok "$name")${c_0}"
+    else
+      info "${c_r}✗ $(t here_fail)${c_0}"; info "  $out"; return 1
+    fi
   else
     info "${c_r}✗ $(t here_fail)${c_0}"
-    info "  $(printf '%s' "$out" | head -2)"
+    info "  $out"
     return 1
   fi
 }
@@ -1546,27 +1598,32 @@ print(walk(d) or "")
   printf '%s%s%s  %s  %s(~/.claude/settings.json)%s\n' \
     "$c_b" "$(t ls_global)" "$c_0" "${pin:-main}" "$c_dim" "$c_0"
 
-  # Chay claude o THU MUC NAY thi acc nao that su co hieu luc? Settings cap
-  # repo chi an o dung thu muc chua .claude/, nen phai hoi theo tung thu muc.
-  local hp; hp="$(repo_pin "$(pwd -P)")"
-  if [[ -n "$hp" ]]; then
-    printf '%s%s%s  %s  %s(%s)%s\n' \
-      "$c_b" "$(t ls_here)" "$c_0" "$hp" "$c_dim" "$(tp ls_pin_of "$(pwd -P)")" "$c_0"
-  else
-    printf '%s%s%s  %s  %s(%s)%s\n' \
-      "$c_b" "$(t ls_here)" "$c_0" "${pin:-main}" "$c_dim" "$(t ls_nopin)" "$c_0"
-  fi
-
   # GUI cua Cursor/VS Code chay o folder [0] cua workspace, khong phai o thu
-  # muc ban dang dung — neu hai cho lech nhau thi noi ro.
-  local line gdir gnote gpin
+  # muc ban dang dung. Dong nay phai len TRUOC "TAI DAY": ai vua ghim cho
+  # workspace roi doc thay "TAI DAY <acc khac>" se tuong ghim khong an.
+  local line gdir gnote gpin=""
   line="$(resolve_target "$PWD" 2>/dev/null || true)"
   gdir="${line%%$'\t'*}"; gnote="${line#*$'\t'}"
+  local has_gui=0
   if [[ -n "$gdir" && "$gdir" != "$(pwd -P)" ]]; then
+    has_gui=1
     gpin="$(repo_pin "$gdir")"
     printf '%s%s%s  %s  %s(%s%s)%s\n' \
       "$c_b" "$(t ls_gui)" "$c_0" "${gpin:-${pin:-main}}" "$c_dim" "$gdir" "${gnote:+ — $gnote}" "$c_0"
   fi
+
+  # Chay claude o THU MUC NAY thi acc nao that su co hieu luc? Settings cap
+  # repo chi an o dung thu muc chua .claude/, nen phai hoi theo tung thu muc.
+  local hp note_here; hp="$(repo_pin "$(pwd -P)")"
+  if [[ -n "$hp" ]]; then
+    note_here="$(tp ls_pin_of "$(pwd -P)")"
+  elif [[ "$has_gui" == 1 ]]; then
+    note_here="$(t ls_here_term)"
+  else
+    note_here="$(t ls_nopin)"
+  fi
+  printf '%s%s%s  %s  %s(%s)%s\n' \
+    "$c_b" "$(t ls_here)" "$c_0" "${hp:-${pin:-main}}" "$c_dim" "$note_here" "$c_0"
   printf '\n'
 
   printf '%smain%s  %s(%s)%s\n' \
