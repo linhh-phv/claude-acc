@@ -74,6 +74,7 @@ claude-acc switch personal --here   # only this repo; the global account is unto
 | This repo back on the main account | `claude-acc switch main --here` |
 | Stop pinning this repo | `claude-acc switch off --here` |
 | Who is being used, and where? | `claude-acc ls` |
+| Read everything in Vietnamese | `claude-acc lang vi` |
 | Start every account's 5-hour window | `claude-acc trigger` |
 | See how much each account has left | `claude-acc usage` |
 
@@ -243,6 +244,7 @@ That's why `claude-acc ls` can show an email for `main` but not for token accoun
 | `sync` | Rewrite the token in every pinned directory (after re-adding an account), and drop directories that no longer exist. |
 | `usage [name...]` | Show 5h / 7d utilization and reset times per account, and suggest the one with most headroom. Costs (and therefore starts) one request per account. Also spelled `quota`. |
 | `trigger [name...]` | Start the 5-hour usage window for the named accounts, or for all of them (including `main`) when given none. Runs them in parallel. Also spelled `warm`. |
+| `lang [vi\|en\|auto]` | Show or change the language of every message, `help` included. Defaults to the system `LANG`, falling back to English. |
 | `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. |
 | `check <name\|main>` | Verify an account's credential still works, with a real API call — not just a config read. |
 | `login [--browser <app>]` | Re-run `claude auth login` for `main` (this overwrites the Keychain — `main` only). |
@@ -251,7 +253,21 @@ That's why `claude-acc ls` can show an email for `main` but not for token accoun
 | `run <name\|main> -- [args]` | Advanced: run one `claude` invocation under a given account without changing what's pinned. Refuses to run if a different account is currently pinned via `switch`, to avoid silently using the wrong one. |
 | `env <name\|main>` | Advanced: print an `export` line to change the current shell only, e.g. `eval "$(claude-acc env work)"`. |
 
-Run `claude-acc help` any time for the full reference (in Vietnamese, matching how the tool was originally built — the behavior is identical either way).
+## Language
+
+Every message, including `help`, is available in English and Vietnamese:
+
+```bash
+claude-acc lang          # what it is now, and where that came from
+claude-acc lang vi       # switch to Vietnamese
+claude-acc lang en       # switch to English
+claude-acc lang auto     # follow the system LANG again
+```
+
+Without a stored choice it follows `LANG`/`LC_ALL`, falling back to English. The choice
+lives in `~/.config/claude-acc/lang`.
+
+Run `claude-acc help` any time for the full reference in whichever language is active.
 
 ## `add` options
 

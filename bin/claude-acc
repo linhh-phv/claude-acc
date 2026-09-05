@@ -1700,81 +1700,169 @@ cmd_uninstall() {
   info "${c_g}$(t un_done)${c_0}$(t un_done2)"
 }
 
-cmd_help() {
+cmd_help() { if [[ "$ACC_LANG" == "vi" ]]; then help_vi; else help_en; fi; }
+
+help_vi() {
   cat <<EOF
-${c_b}claude-acc${c_0} v${VERSION} — nhieu account Claude Code tren mot may, khong login lai
+${c_b}claude-acc${c_0} v${VERSION} — nhiều account Claude Code trên một máy, không phải login lại
 
-${c_b}LENH${c_0}
-  add <ten> [tuy chon]   Them acc phu: chay \`claude setup-token\`, luu token vao Keychain
-      --browser <app>      Duyet trong app nay thay vi browser mac dinh
+${c_b}LỆNH${c_0}
+  add <tên> [tùy chọn]   Thêm acc phụ: chạy \`claude setup-token\`, lưu token vào Keychain
+      --browser <app>      Duyệt trong app này thay vì browser mặc định
                            (vd: "Google Chrome" | "Safari" | "Brave Browser")
-      --url-only           Khong mo browser; COPY URL duyet vao clipboard de tu dan
-      --clip               Lay token tu clipboard, khong hoi gi
-      --stdin              Doc token tu stdin:  pbpaste | claude-acc add x --stdin
-      --no-setup           Bo qua buoc sinh token (khi da co token san)
-  switch <ten|main>      Doi acc cho CA Cursor/VS Code GUI lan terminal, AN NGAY
-                         — khong can Reload Window. DAY LA LENH CHINH DE DOI ACC.
-                         Luu y: ap ngay cho CA CAC PHIEN DANG CHAY o moi repo.
-  switch <ten|main|off> --here
-                         Nhu tren, nhung CHI cho repo/workspace ban dang dung
-                         — de moi repo mot acc, khoi don limit vao mot acc.
-                         \`off\` = bo ghim rieng, quay ve theo acc toan cuc.
-      --at <thu-muc>       ghim cho thu muc khac thay vi thu muc hien tai
-      --no-check           bo qua buoc goi thu API sau khi ghim
-  trigger [ten...]       Mo cua so 5h cho cac acc (mac dinh: TAT CA, ke ca main)
-                         bang mot request nho, chay song song. Nêu ten acc de
-                         chi trigger dung nhung acc do.
-  usage [ten...]         Xem da tieu bao nhieu % cua so 5h / 7 ngay va bao gio
-                         reset, cho tung acc (mac dinh: TAT CA). Chinh viec hoi
-                         cung la mot request nen CUNG mo cua so 5h cua acc do.
-  reassign <cu> <moi>    Chuyen MOI thu muc dang ghim <cu> sang <moi>
-  sync                   Ghi lai token cho moi thu muc da ghim (sau khi \`add\`
-                         lai mot acc, hoac khi nghi file trong repo bi sua)
-  ls                     Liet ke acc (main + cac acc phu, kem tinh trang token)
-  check <ten|main>       Goi mot request that de xac nhan acc do con dung duoc
-  login [--browser <app>]  Dang nhap acc 'main' (ghi de Keychain), chon browser
-  rm <ten>               Xoa acc phu khoi Keychain
-  run <ten|main> [-- args]  (nang cao) Chay claude bang acc do CHI CHO LENH NAY,
-                         khong doi acc dang ghim. Loi neu dang co acc khac ghim.
-  env <ten|main>         (nang cao) In lenh export de doi acc cho SHELL HIEN TAI:
-                           eval "\$(claude-acc env ten-acc)"
-  uninstall              Xoa toan bo token trong Keychain va cau hinh cua claude-acc
-  version, -v            In phien ban
-  help, -h               In huong dan nay
+      --url-only           Không mở browser; COPY URL duyệt vào clipboard để tự dán
+      --stdin              Đọc token từ stdin:  pbpaste | claude-acc add x --stdin
+      --clip               Lấy token từ clipboard, không hỏi gì
+      --no-setup           Bỏ qua bước sinh token (khi đã có token sẵn)
+  switch <tên|main>      Đổi acc cho CẢ Cursor/VS Code GUI lẫn terminal, ĂN NGAY
+                         — không cần Reload Window. ĐÂY LÀ LỆNH CHÍNH ĐỂ ĐỔI ACC.
+                         Lưu ý: áp ngay cho CẢ CÁC PHIÊN ĐANG CHẠY ở mọi repo.
+  switch <tên|main|off> --here
+                         Như trên, nhưng CHỈ cho repo/workspace bạn đang dùng
+                         — để mỗi repo một acc, khỏi dồn limit vào một acc.
+                         \`off\` = bỏ ghim riêng, quay về theo acc toàn cục.
+      --at <thư-mục>       ghim cho thư mục khác thay vì thư mục hiện tại
+      --no-check           bỏ qua bước gọi thử API sau khi ghim
+  trigger [tên...]       Mở cửa sổ 5h cho các acc (mặc định: TẤT CẢ, kể cả main)
+                         bằng một request nhỏ, chạy song song. Nêu tên acc để
+                         chỉ trigger đúng những acc đó.
+  usage [tên...]         Xem đã tiêu bao nhiêu % cửa sổ 5h / 7 ngày và bao giờ
+                         reset, cho từng acc (mặc định: TẤT CẢ). Chính việc hỏi
+                         cũng là một request nên CŨNG mở cửa sổ 5h của acc đó.
+  reassign <cũ> <mới>    Chuyển MỌI thư mục đang ghim <cũ> sang <mới>
+  sync                   Ghi lại token cho mọi thư mục đã ghim (sau khi \`add\`
+                         lại một acc, hoặc khi nghi file trong repo bị sửa)
+  ls                     Liệt kê acc, acc nào đang có hiệu lực ở đâu
+  check <tên|main>       Gọi một request thật để xác nhận acc đó còn dùng được
+  lang [vi|en|auto]      Xem hoặc đổi ngôn ngữ của claude-acc
+  login [--browser <app>]  Đăng nhập acc "main" (ghi đè Keychain), chọn browser
+  rm <tên>               Xóa acc phụ khỏi Keychain
+  run <tên|main> [-- args]  (nâng cao) Chạy claude bằng acc đó CHỈ CHO LỆNH NÀY,
+                         không đổi acc đang ghim. Lỗi nếu đang có acc khác ghim.
+  env <tên|main>         (nâng cao) In lệnh export để đổi acc cho SHELL HIỆN TẠI:
+                           eval "\$(claude-acc env tên-acc)"
+  uninstall              Xóa toàn bộ token trong Keychain và cấu hình của claude-acc
+  version, -v            In phiên bản
+  help, -h               In hướng dẫn này
 
-${c_b}BAT DAU NHANH${c_0}
-  claude-acc add ca-nhan --browser "Safari"   # duyet trong browser dang login acc do
-  claude-acc switch ca-nhan                   # doi acc cho ca terminal lan GUI
-  claude                                      # dung claude nhu binh thuong
-  claude-acc switch main                      # doi ve acc chinh
+${c_b}BẮT ĐẦU NHANH${c_0}
+  claude-acc add ca-nhan --browser "Safari"   # duyệt trong browser đang login acc đó
+  claude-acc switch ca-nhan                   # đổi acc cho cả terminal lẫn GUI
+  claude                                      # dùng claude như bình thường
+  claude-acc switch main                      # đổi về acc chính
 
-  cd <repo> && claude-acc switch ca-nhan --here   # rieng repo nay dung acc khac
-  claude-acc switch main --here                  # rieng repo nay dung main
-  claude-acc switch off --here                   # bo ghim rieng cua repo
-  claude-acc reassign ca-nhan acc-2           # acc-1 gan het limit -> san tai
+  cd <repo> && claude-acc switch ca-nhan --here   # riêng repo này dùng acc khác
+  claude-acc switch main --here                  # riêng repo này dùng main
+  claude-acc switch off --here                   # bỏ ghim riêng của repo
+  claude-acc reassign ca-nhan acc-2           # acc-1 gần hết limit -> san tải
 
-  claude-acc trigger                          # mo cua so 5h cho TAT CA acc
-  claude-acc trigger ca-nhan acc-2            # chi 2 acc nay (bo qua acc cong ty)
+  claude-acc usage                            # acc nào còn nhiều hạn mức nhất
+  claude-acc trigger                          # mở cửa sổ 5h cho TẤT CẢ acc
+  claude-acc trigger ca-nhan acc-2            # chỉ 2 acc này (bỏ qua acc công ty)
 
-${c_b}GHIM THEO THU MUC — hai dieu PHAI biet (deu da do, khong phai suy doan)${c_0}
-  - Settings cap repo chi an khi \`claude\` chay DUNG o thu muc chua .claude/.
-    Chay tu thu muc con KHONG ke thua — \`cd apps/web && claude\` se am tham
-    dung acc toan cuc. \`claude-acc ls\` cho biet acc nao that su co hieu luc.
-  - Trong Cursor/VS Code multi-root workspace, MOI tab chat deu chay o folder
-    [0] cua file .code-workspace, ke ca khi tab do lam viec tren worktree
-    khac. Nen ghim ap cho CA workspace, khong rieng mot worktree — va
-    \`here\` tu nham vao folder [0] thay vi thu muc ban dang dung.
+${c_b}GHIM THEO THƯ MỤC — hai điều PHẢI biết (đều đã đo, không phải suy đoán)${c_0}
+  - Settings cấp repo chỉ ăn khi \`claude\` chạy ĐÚNG ở thư mục chứa .claude/.
+    Chạy từ thư mục con KHÔNG kế thừa — \`cd apps/web && claude\` sẽ âm thầm
+    dùng acc toàn cục. \`claude-acc ls\` cho biết acc nào thật sự có hiệu lực.
+  - Trong Cursor/VS Code multi-root workspace, MỌI tab chat đều chạy ở folder
+    [0] của file .code-workspace, kể cả khi tab đó làm việc trên worktree
+    khác. Nên ghim áp cho CẢ workspace, không riêng một worktree — và
+    \`--here\` tự nhắm vào folder [0] thay vì thư mục bạn đang đứng.
 
-${c_b}LUU Y${c_0}
-  - Chi acc 'main' co claude.ai connectors, Remote Control va /schedule.
-    Chon acc dung nhieu nhat lam main.
-  - \`claude setup-token\` KHONG ghi vao Keychain cua acc 'main' — them acc phu
-    khong bao gio lam mat dang nhap cua acc chinh. Chi \`claude-acc login\` moi
-    ghi de Keychain.
-  - Token \`setup-token\` song 1 nam. Het han thi \`claude-acc add <ten>\` lai.
-  - \`switch\` ghi token DANG VAN BAN vao ~/.claude/settings.json (quyen 600) vi
-    Cursor/VS Code doc credential tu do, khong doc duoc Keychain rieng theo acc.
-  - History/session dung chung giua cac acc (khong tach CLAUDE_CONFIG_DIR).
+${c_b}LƯU Ý${c_0}
+  - Chỉ acc "main" có claude.ai connectors, Remote Control và /schedule.
+    Chọn acc dùng nhiều nhất làm main.
+  - \`claude setup-token\` KHÔNG ghi vào Keychain của acc "main" — thêm acc phụ
+    không bao giờ làm mất đăng nhập của acc chính. Chỉ \`claude-acc login\` mới
+    ghi đè Keychain.
+  - Token \`setup-token\` sống 1 năm. Hết hạn thì \`claude-acc add <tên>\` lại.
+  - \`switch\` ghi token DẠNG VĂN BẢN vào ~/.claude/settings.json (quyền 600) vì
+    Cursor/VS Code đọc credential từ đó, không đọc được Keychain riêng theo acc.
+  - History/session dùng chung giữa các acc (không tách CLAUDE_CONFIG_DIR).
+EOF
+}
+
+help_en() {
+  cat <<EOF
+${c_b}claude-acc${c_0} v${VERSION} — several Claude Code accounts on one Mac, without logging in again
+
+${c_b}COMMANDS${c_0}
+  add <name> [options]   Add a token account: runs \`claude setup-token\`, stores it in the Keychain
+      --browser <app>      Browse in this app instead of your default browser
+                           (e.g. "Google Chrome" | "Safari" | "Brave Browser")
+      --url-only           Do not open a browser; COPY the auth URL to the clipboard
+      --stdin              Read the token from stdin:  pbpaste | claude-acc add x --stdin
+      --clip               Take the token from the clipboard, no prompts
+      --no-setup           Skip generating a token (when you already have one)
+  switch <name|main>     Change the account for BOTH the Cursor/VS Code GUI and the
+                         terminal, IN EFFECT NOW — no Reload Window. THE MAIN COMMAND.
+                         Note: it also moves sessions ALREADY RUNNING, in every repo.
+  switch <name|main|off> --here
+                         The same, but ONLY for the repo/workspace you are in —
+                         one account per repo, so no single account takes the
+                         whole load. \`off\` drops the pin and follows the global one.
+      --at <dir>           pin another directory instead of the current one
+      --no-check           skip the verifying API call after pinning
+  trigger [name...]      Start the 5-hour window for accounts (default: ALL of them,
+                         main included) with one small request each, in parallel.
+                         Name accounts to start only those.
+  usage [name...]        Show how much of the 5h / 7d window each account has used
+                         and when it resets (default: ALL). Asking is itself a
+                         request, so it ALSO starts that window.
+  reassign <old> <new>   Move EVERY directory pinned to <old> over to <new>
+  sync                   Rewrite the token in every pinned directory (after adding
+                         an account again, or if a repo file looks edited)
+  ls                     List accounts, and which one is in effect where
+  check <name|main>      Make a real request to confirm an account still works
+  lang [vi|en|auto]      Show or change the language claude-acc speaks
+  login [--browser <app>]  Sign in the "main" account (overwrites the Keychain)
+  rm <name>              Remove a token account from the Keychain
+  run <name|main> [-- args]  (advanced) Run claude under that account FOR THIS
+                         COMMAND ONLY. Errors out if another account is pinned.
+  env <name|main>        (advanced) Print an export line for THIS SHELL only:
+                           eval "\$(claude-acc env name)"
+  uninstall              Remove every token and all claude-acc configuration
+  version, -v            Print the version
+  help, -h               Print this help
+
+${c_b}QUICK START${c_0}
+  claude-acc add work --browser "Safari"      # browse where that account is signed in
+  claude-acc switch work                      # change account for terminal and GUI
+  claude                                      # use claude as usual
+  claude-acc switch main                      # back to the main account
+
+  cd <repo> && claude-acc switch work --here     # this repo uses a different account
+  claude-acc switch main --here                  # this repo uses main
+  claude-acc switch off --here                   # drop this repo's pin
+  claude-acc reassign work other               # work is near its limit -> spread out
+
+  claude-acc usage                            # which account has the most headroom
+  claude-acc trigger                          # start the 5-hour window on ALL accounts
+  claude-acc trigger work other               # only these two
+
+${c_b}DIRECTORY PINS — two things you MUST know (both measured, not assumed)${c_0}
+  - Repo-level settings only apply when \`claude\` runs in the exact directory
+    holding .claude/. They do NOT cascade into subdirectories — \`cd apps/web
+    && claude\` silently uses the global account. \`claude-acc ls\` shows what
+    is really in effect where you stand.
+  - In a Cursor/VS Code multi-root workspace, EVERY chat tab runs in folder
+    [0] of the .code-workspace file, even a tab working on another worktree.
+    So a pin covers the WHOLE workspace, not one worktree — and \`--here\`
+    aims at folder [0] rather than the directory you happen to be in.
+
+${c_b}NOTES${c_0}
+  - Only "main" has claude.ai connectors, Remote Control and /schedule.
+    Make your most-used account main.
+  - \`claude setup-token\` never writes to the "main" Keychain entry, so adding
+    a token account can never log the main one out. Only \`claude-acc login\`
+    overwrites the Keychain.
+  - \`setup-token\` credentials last about a year. When one expires, run
+    \`claude-acc add <name>\` again.
+  - \`switch\` writes the token in PLAIN TEXT into ~/.claude/settings.json
+    (mode 600), because Cursor/VS Code read credentials from there and cannot
+    read a per-account Keychain entry.
+  - History and sessions are shared across accounts (CLAUDE_CONFIG_DIR is not
+    split per account).
 EOF
 }
 
