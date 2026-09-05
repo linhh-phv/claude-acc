@@ -1254,16 +1254,22 @@ PYEOF
 # Hoi API mot cau re nhat va doc HEADERS — so lieu han muc chi nam o do,
 # khong co lenh CLI nao in ra. Token di qua BIEN MOI TRUONG chu khong qua
 # argv: argv cua moi tien trinh la cong khai voi `ps`.
-usage_one() {
-  local acc="$1" out_file="$2" tok=""
-  if [[ "$acc" == "main" ]]; then
-    tok="$(main_access_token)" || { printf 'ERR\t%s\n' "$(t usg_nocred)" > "$out_file"; return; }
-  else
-    tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)" \
-      || { printf 'ERR\t%s\n' "$(tp warm_lost "$acc")" > "$out_file"; return; }
-  fi
+# accessToken cua 'main' chi song vai gio va do CHINH Claude Code lam moi
+# (no giu refreshToken). Doc thang tu Keychain nen co the vo phai ban da het
+# han -> 401. Cach lam moi: chay mot request qua `claude`, no tu doi token
+# moi roi ghi lai vao Keychain; sau do doc lai la dung.
+refresh_main_token() {
+  local d; d="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-refresh.XXXXXX")" || return 1
+  chmod 700 "$d"; mkdir -p "$d/.claude"
+  # token RONG o cap thu muc: de len token thua ke, buoc `claude` dung Keychain
+  printf '{"env":{"CLAUDE_CODE_OAUTH_TOKEN":""}}' > "$d/.claude/settings.local.json"
+  chmod 600 "$d/.claude/settings.local.json"
+  (cd "$d" && env -u CLAUDE_CODE_OAUTH_TOKEN claude -p 'hi' --model haiku >/dev/null 2>&1) || true
+  rm -rf "$d"
+}
 
-  CLAUDE_ACC_TOK="$tok" python3 - > "$out_file" <<'PYEOF'
+usage_probe() {
+  CLAUDE_ACC_TOK="$1" T_EXPIRED="$(t usg_expired)" python3 - > "$2" <<'PYEOF'
 import json, os, sys, urllib.request, urllib.error
 
 body = json.dumps({"model": "claude-haiku-4-5-20251001", "max_tokens": 1,
@@ -1288,7 +1294,8 @@ def g(name, default=""):
     return h.get("anthropic-ratelimit-unified-" + name, default) if h else default
 
 if code == 401 or code == 403:
-    print("EXPIRED\tHTTP %d — token khong con dung duoc" % code); sys.exit()
+    print("EXPIRED\t" + (os.environ.get("T_EXPIRED") or "HTTP %s - token no longer usable") % code)
+    sys.exit()
 if not g("5h-status") and code >= 400:
     print("ERR\tHTTP %d" % code); sys.exit()
 
@@ -1296,6 +1303,26 @@ print("\t".join(["OK", g("5h-utilization", "?"), g("5h-reset", "0"), g("5h-statu
                  g("7d-utilization", "?"), g("7d-reset", "0"), g("7d-status", "?"),
                  g("overage-status", "")]))
 PYEOF
+}
+
+usage_one() {
+  local acc="$1" out_file="$2" tok=""
+  if [[ "$acc" == "main" ]]; then
+    tok="$(main_access_token)" || { printf 'ERR\t%s\n' "$(t usg_nocred)" > "$out_file"; return; }
+  else
+    tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)" \
+      || { printf 'ERR\t%s\n' "$(tp warm_lost "$acc")" > "$out_file"; return; }
+  fi
+
+  usage_probe "$tok" "$out_file"
+
+  # 'main' het han thi khong phai hong — chi la accessToken ngan han da qua
+  # han. Nho Claude Code lam moi mot lan roi hoi lai, thay vi bao loi.
+  if [[ "$acc" == "main" ]] && head -c 7 "$out_file" 2>/dev/null | grep -q '^EXPIRED'; then
+    refresh_main_token
+    tok="$(main_access_token)" || return
+    usage_probe "$tok" "$out_file"
+  fi
 }
 
 cmd_usage() {
