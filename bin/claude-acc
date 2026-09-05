@@ -21,7 +21,9 @@ SVC="claude-code-token"
 CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/claude-acc"
 LIST="$CFG_DIR/accounts"
 REPOS="$CFG_DIR/repos"
-SETTINGS="$HOME/.claude/settings.json"
+# Cho phep tro sang file khac de kiem thu ma khong dung vao acc that dang
+# dung. Bo trong -> dung file that.
+SETTINGS="${CLAUDE_ACC_SETTINGS:-$HOME/.claude/settings.json}"
 
 c_dim=$'\033[2m'; c_b=$'\033[1m'; c_r=$'\033[31m'; c_g=$'\033[32m'; c_y=$'\033[33m'; c_0=$'\033[0m'
 if [[ ! -t 1 ]]; then c_dim=; c_b=; c_r=; c_g=; c_y=; c_0=; fi
@@ -584,6 +586,21 @@ os.replace(tmp,p)
   info "${c_dim}CLI doc lai settings.json o TUNG request, nen ca nhung phien${c_0}"
   info "${c_dim}dang chay (moi cua so, moi repo) cung doi sang acc nay ngay.${c_0}"
 
+  # ... TRU nhung thu muc da ghim rieng: ghim cap repo de len ghim toan cuc.
+  # Neu dung ngay trong mot cho nhu vay ma khong noi gi, nguoi dung se tuong
+  # da doi acc cho repo nay.
+  local _l _gdir _gpin
+  _l="$(resolve_target "$PWD" 2>/dev/null || true)"; _gdir="${_l%%$'\t'*}"
+  _gpin="$(repo_pin "$(pwd -P)")"
+  [[ -z "$_gpin" && -n "$_gdir" && "$_gdir" != "$(pwd -P)" ]] && _gpin="$(repo_pin "$_gdir")"
+  if [[ -n "$_gpin" && "$_gpin" != "$name" ]]; then
+    info ""
+    info "${c_y}Nhung KHONG doi cho cho ban dang dung:${c_0} noi nay ghim rieng acc '$_gpin'"
+    info "${c_dim}  (ghim cap repo de len ghim toan cuc).${c_0}"
+    info "${c_dim}  Doi luon cho nay:  claude-acc switch $name --here${c_0}"
+    info "${c_dim}  Bo ghim rieng   :  claude-acc switch off --here${c_0}"
+  fi
+
   info "${c_dim}Kiem tra bang mot request that…${c_0}"
   cmd_check "$name"
 }
@@ -602,7 +619,8 @@ cmd_here() {
              name="$1"; shift ;;
     esac
   done
-  [[ -n "$name" ]] || die "dung: claude-acc here <ten-acc|main|off> [--at <thu-muc>]"
+  [[ -n "$name" ]] || die "dung: claude-acc switch <ten-acc|main|off> --here [--at <thu-muc>]
+       main = repo nay dung acc chinh (Keychain) · off = bo ghim rieng"
 
   local dir note=""
   if [[ -n "$at" ]]; then
@@ -991,11 +1009,12 @@ ${c_b}LENH${c_0}
   switch <ten|main>      Doi acc cho CA Cursor/VS Code GUI lan terminal, AN NGAY
                          — khong can Reload Window. DAY LA LENH CHINH DE DOI ACC.
                          Luu y: ap ngay cho CA CAC PHIEN DANG CHAY o moi repo.
-  here <ten|main|off>    Ghim acc RIENG cho thu muc lam viec hien tai, doc lap
-      --at <thu-muc>       voi ghim toan cuc. Dung de moi repo mot acc, khoi
-      --no-check           (bo qua buoc goi thu API sau khi ghim)
-                           don limit vao mot acc. \`off\` = bo ghim.
-                           (Viet cach khac: claude-acc switch <ten> --here)
+  switch <ten|main|off> --here
+                         Nhu tren, nhung CHI cho repo/workspace ban dang dung
+                         — de moi repo mot acc, khoi don limit vao mot acc.
+                         \`off\` = bo ghim rieng, quay ve theo acc toan cuc.
+      --at <thu-muc>       ghim cho thu muc khac thay vi thu muc hien tai
+      --no-check           bo qua buoc goi thu API sau khi ghim
   reassign <cu> <moi>    Chuyen MOI thu muc dang ghim <cu> sang <moi>
   sync                   Ghi lai token cho moi thu muc da ghim (sau khi \`add\`
                          lai mot acc, hoac khi nghi file trong repo bi sua)
@@ -1017,9 +1036,9 @@ ${c_b}BAT DAU NHANH${c_0}
   claude                                      # dung claude nhu binh thuong
   claude-acc switch main                      # doi ve acc chinh
 
-  cd <repo> && claude-acc here ca-nhan        # rieng repo nay dung acc khac
-  claude-acc here main                        # rieng repo nay dung main
-  claude-acc here off                         # bo ghim rieng cua repo
+  cd <repo> && claude-acc switch ca-nhan --here   # rieng repo nay dung acc khac
+  claude-acc switch main --here                  # rieng repo nay dung main
+  claude-acc switch off --here                   # bo ghim rieng cua repo
   claude-acc reassign ca-nhan acc-2           # acc-1 gan het limit -> san tai
 
 ${c_b}GHIM THEO THU MUC — hai dieu PHAI biet (deu da do, khong phai suy doan)${c_0}
@@ -1057,7 +1076,9 @@ case "${1:-help}" in
     if printf '%s\n' "$@" | grep -qx -- '--here'; then
       _args=()
       for _x in "$@"; do [[ "$_x" == "--here" ]] || _args+=("$_x"); done
-      cmd_here "${_args[@]}"
+      # ${a[@]} tren mang RONG lam `set -u` nem "unbound variable" — phai dung
+      # dang ${a[@]+...} de cmd_here con kip in huong dan dung lenh.
+      cmd_here ${_args[@]+"${_args[@]}"}
     else
       cmd_switch "$@"
     fi

@@ -80,10 +80,14 @@ directory instead:
 
 ```bash
 cd ~/work/some-repo
-claude-acc here work        # this repo uses "work"
-claude-acc here main        # this repo uses main (the Keychain account)
-claude-acc here off         # unpin; back to whatever `switch` says
+claude-acc switch work --here   # this repo uses "work"
+claude-acc switch main --here   # this repo uses main (the Keychain account)
+claude-acc switch off --here    # unpin; back to whatever plain `switch` says
 ```
+
+Same command you already use, plus `--here`. (`claude-acc here work` is the shorter
+spelling if you prefer it.) Run a plain `switch` while standing in a pinned directory
+and it will tell you that this spot keeps its own account and won't move.
 
 It writes the `env` block into that directory's `.claude/settings.local.json`, which
 overrides the global file. Existing contents are merged, not replaced — your
@@ -138,7 +142,7 @@ global one and falls back to the Keychain. No secret is written at all.
 |---|---|
 | `add <name> [--browser <app>]` | Add a secondary account. Runs `claude setup-token`, captures the token automatically (no copy/paste), stores it in the Keychain. |
 | `switch <name\|main>` | **The command you'll use most.** Makes `<name>` (or `main`) the active account for both the CLI and the GUI extension. |
-| `here <name\|main\|off>` | Pin an account to the current repo/workspace, independent of the global one. `--at <dir>` to target another directory, `--no-check` to skip the verifying API call. |
+| `switch <name\|main\|off> --here` | Pin an account to the current repo/workspace, independent of the global one. `--at <dir>` targets another directory, `--no-check` skips the verifying API call. Also spelled `here <name>`. |
 | `reassign <old> <new>` | Move every pinned directory from one account to another — for when `<old>` is near its limit. |
 | `sync` | Rewrite the token in every pinned directory (after re-adding an account), and drop directories that no longer exist. |
 | `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. |
