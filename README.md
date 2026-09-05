@@ -201,13 +201,13 @@ claude-acc usage work personal   # only these two
 ```
 
 ```
-  acc        cua so 5h                      cua so 7 ngay
- * work      #.........   9%  13:40 (con 3h32)   3%  11/09 (con 6 ngay)
- * personal    ..........   2%  11:00 (con 52p)    0%  11/09 (con 6 ngay)
- * main      #####.....  50%  13:30 (con 3h22)  19%  05/09 (con 9h52)
+  account    5-hour window                  7-day window
+ * work      #.........   9%  13:40 (3h32 left)   3%  11/09 (6 days left)
+ * personal  ..........   2%  11:00 (52m left)    0%  11/09 (6 days left)
+ * main      #####.....  50%  13:30 (3h22 left)  19%  05/09 (9h52 left)
 
-Con nhieu nhat: personal (5h moi dung 2%)
-  -> dung cho repo dang lam:  claude-acc switch personal --here
+Most headroom: personal (5h only 2% used)
+  -> use it for the repo you are in:  claude-acc switch personal --here
 ```
 
 It reads `anthropic-ratelimit-unified-*` off a one-token request, so the numbers are the

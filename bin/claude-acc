@@ -155,7 +155,7 @@ t_vi() {
     un_done)        printf '%b' 'xong.' ;;
     un_done2)       printf '%b' ' Xóa tiếp bin claude-acc khỏi PATH nếu muốn gỡ hoàn toàn.' ;;
 
-    err_only_names) printf '%b' 'lệnh này chỉ nhận tên acc. Ví dụ: claude-acc %s work personal' ;;
+    err_only_names) printf '%b' 'lệnh này chỉ nhận tên acc. Ví dụ: claude-acc %s cong-viec ca-nhan' ;;
     err_unknown_acc) printf '%b' 'không biết acc "%s". Xem danh sách: claude-acc ls' ;;
     err_no_accs)    printf '%b' 'không có acc nào để chạy.' ;;
     warm_running)   printf '%b' 'Gọi một request nhỏ cho %s acc (song song)…' ;;
@@ -499,8 +499,8 @@ print((d.get("env") or {}).get("CLAUDE_ACC_NAME") or "")
 #     apps/web chay ngon).
 #   - Trong Cursor/VS Code multi-root workspace, MOI tab chat deu chay voi
 #     cwd = folder [0] cua file .code-workspace (do bang cwd tien trinh that:
-#     3 phien cua workspace a-workspace deu o folder [0], du tab dang
-#     lam viec tren worktree khac).
+#     3 phien chat cua mot workspace 6 folder deu o folder [0], du mot tab
+#     dang lam viec tren worktree khac).
 # => Cho nen ghim phai nham vao thu muc GUI thuc su chay, khong phai thu muc
 #    ban dang dung o terminal.
 
