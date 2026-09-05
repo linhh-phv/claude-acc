@@ -68,6 +68,119 @@ t_vi() {
     probe_ok)       printf '%b' 'token hợp lệ, gọi được API' ;;
     trying_real)    printf '%b' 'đang thử một request thật…' ;;
 
+    err_br_app)     printf '%b' '--browser cần tên app, vd: --browser "Brave Browser"' ;;
+    err_br_bad)     printf '%b' '--browser cần tên app, không phải "%s" (thiếu tên app trước đó?)' ;;
+    err_br_app2)    printf '%b' '--browser cần tên app.' ;;
+    err_unknown)    printf '%b' 'tùy chọn không biết: %s (xem: claude-acc help)' ;;
+    err_unknown_cmd) printf '%b' 'lệnh không biết: "%s". Xem: claude-acc help' ;;
+    err_extra)      printf '%b' 'thừa tham số: %s' ;;
+    usage_add)      printf '%b' 'dùng: claude-acc add <tên-acc> [--browser <app>|--url-only] [--clip|--stdin|--no-setup]' ;;
+    add_overwrite)  printf '%b' '"%s" đã có token — sẽ ghi đè.' ;;
+    add_no_app)     printf '%b' 'không thấy /Applications/%s.app' ;;
+    add_no_app2)    printf '%b' ' — vẫn thử, nhưng kiểm tra lại tên app.' ;;
+    add_default_br) printf '%b' 'Sẽ mở BROWSER MẶC ĐỊNH.' ;;
+    add_default_b2) printf '%b' ' Nếu acc "%s" nằm ở browser khác, dùng\n  --browser "Brave Browser" | "Google Chrome" | "Safari"\nhoặc --url-only để tự dán URL.' ;;
+    add_urlonly)    printf '%b' 'Chế độ --url-only:' ;;
+    add_urlonly2)   printf '%b' ' URL duyệt sẽ tự động được COPY VÀO CLIPBOARD (không tự mở browser). Dán (Cmd+V) vào đúng cửa sổ/profile cần đăng nhập.' ;;
+    add_browse_in)  printf '%b' 'Sẽ duyệt trong: %s' ;;
+    add_browse_in2) printf '%b' ' — nếu nó mở nhầm profile, `claude setup-token` cũng sẽ tự in URL ở bên dưới để bạn tự dán sang cửa sổ đúng.' ;;
+    add_note)       printf '%b' 'Sau khi bạn bấm Authorize (hoặc dán code nếu được hỏi), token sẽ được\ntự động bắt lại — không cần copy/paste. Nếu vì lý do nào đó không bắt được,\nbạn sẽ được hỏi dán token thủ công ngay sau đây.' ;;
+    add_caught)     printf '%b' 'đã tự bắt được token' ;;
+    add_caught2)    printf '%b' ' (%s…%s, %s ký tự) — không cần copy/paste.' ;;
+    add_nocatch)    printf '%b' 'không bắt được token từ output của setup-token.' ;;
+    add_nocatch2)   printf '%b' ' Dán tay bên dưới.' ;;
+    err_clip)       printf '%b' 'clipboard không chứa chuỗi "sk-ant-…". Copy token rồi chạy lại.' ;;
+    add_from_clip)  printf '%b' 'lấy từ clipboard: %s…%s (%s ký tự)' ;;
+    err_empty_tok)  printf '%b' 'token rỗng, hủy.' ;;
+    err_keychain)   printf '%b' 'không ghi được vào Keychain.' ;;
+    add_saved)      printf '%b' 'đã lưu "%s". Đang kiểm tra bằng một request thật…' ;;
+    add_ready)      printf '%b' '"%s" sẵn sàng.' ;;
+    add_ready2)     printf '%b' ' Dùng: claude-acc switch %s' ;;
+    add_bad)        printf '%b' 'token lưu rồi nhưng KHÔNG gọi được API.' ;;
+    add_bad2)       printf '%b' '  Chạy lại `claude-acc add %s --browser "<browser của acc đó>"`.' ;;
+    tok_prompt)     printf '%b' 'Token cho "%s"' ;;
+    tok_prompt2)    printf '%b' ' — dán vào rồi Enter (ký tự sẽ bị ẩn), hoặc chỉ Enter để lấy từ clipboard:' ;;
+    tok_got)        printf '%b' 'đã nhận: %s…%s (%s ký tự)' ;;
+
+    usage_login)    printf '%b' 'dùng: claude-acc login [--browser <app>|--url-only]' ;;
+    login_warn)     printf '%b' 'Lưu ý:' ;;
+    login_warn2)    printf '%b' ' lệnh này GHI ĐÈ credential trong Keychain — acc "main" hiện tại' ;;
+    login_warn3)    printf '%b' 'sẽ bị thay thế. Các acc phụ (dùng token) không bị ảnh hưởng.' ;;
+    login_result)   printf '%b' 'Kết quả:' ;;
+
+    usage_rm)       printf '%b' 'dùng: claude-acc rm <tên-acc>' ;;
+    rm_notfound)    printf '%b' 'không tìm thấy token của "%s" trong Keychain (vẫn gỡ khỏi danh sách).' ;;
+    rm_pinned)      printf '%b' '"%s" đang được ghim — bỏ ghim luôn.' ;;
+    rm_done)        printf '%b' 'đã xóa "%s".' ;;
+
+    ls_global)      printf '%b' 'TOÀN CỤC' ;;
+    ls_here)        printf '%b' 'TẠI ĐÂY ' ;;
+    ls_gui)         printf '%b' 'GUI     ' ;;
+    ls_pin_of)      printf '%b' 'ghim của %s' ;;
+    ls_nopin)       printf '%b' 'không ghim riêng — theo toàn cục' ;;
+    ls_main_desc)   printf '%b' 'Keychain — đầy đủ connectors, Remote Control' ;;
+    ls_sub)         printf '%b' 'acc phụ' ;;
+    ls_sub_desc)    printf '%b' 'token — không có connectors' ;;
+    ls_lost_tok)    printf '%b' 'mất token — chạy: claude-acc add %s' ;;
+    ls_none)        printf '%b' 'chưa có acc phụ nào. Thêm bằng: claude-acc add <tên>' ;;
+    ls_pins)        printf '%b' 'GHIM THEO THƯ MỤC' ;;
+    ls_pins_hint)   printf '%b' 'claude-acc switch <tên> --here' ;;
+    ls_dir_gone)    printf '%b' 'thư mục không còn — claude-acc sync' ;;
+
+    usage_run)      printf '%b' 'dùng: claude-acc run <tên-acc|main> [-- <tham số cho claude>]' ;;
+    run_dirpin)     printf '%b' 'thư mục này đang GHIM acc "%s" (%s) — nó đè lên `run`.\n     Đổi ghim:  claude-acc switch %s --here\n     Bỏ ghim :  claude-acc switch off --here' ;;
+    run_glbpin)     printf '%b' 'đang GHIM acc "%s" trong ~/.claude/settings.json — nó đè lên `run`.\n     %s' ;;
+    run_fix_main)   printf '%b' 'Bỏ ghim: claude-acc switch main' ;;
+    run_fix_acc)    printf '%b' 'Đổi ghim: claude-acc switch %s' ;;
+    usage_env)      printf '%b' 'dùng: eval "$(claude-acc env <tên-acc|main>)"' ;;
+
+    usage_check)    printf '%b' 'dùng: claude-acc check <tên-acc|main>' ;;
+    chk_main_ok)    printf '%b' 'main dùng được' ;;
+    chk_main_bad)   printf '%b' 'main KHÔNG dùng được' ;;
+    chk_main_bad2)  printf '%b' ' — chạy: claude auth login' ;;
+    chk_ok)         printf '%b' '%s dùng được' ;;
+    chk_bad)        printf '%b' '%s KHÔNG dùng được' ;;
+    chk_bad2)       printf '%b' ' — chạy lại: claude-acc add %s (chọn Y)' ;;
+
+    un_willremove)  printf '%b' 'Sẽ gỡ bỏ:' ;;
+    un_tok)         printf '%b' '  - token Keychain của "%s"' ;;
+    un_cfg)         printf '%b' '  - %s (danh sách acc phụ)' ;;
+    un_pin)         printf '%b' '  - bỏ ghim + xóa token trong %s' ;;
+    un_glob)        printf '%b' '  - bỏ ghim trong %s (đưa về "main")' ;;
+    un_bak)         printf '%b' '  - %s (bản sao lưu, còn chứa token cũ)' ;;
+    un_self)        printf '%b' 'Sau bước này, xóa tay file bin: %s' ;;
+    un_confirm)     printf '%b' 'Xác nhận xóa? [y/N] ' ;;
+    un_cancel)      printf '%b' 'đã hủy.' ;;
+    un_cantclean)   printf '%b' '  không dọn được: %s' ;;
+    un_done)        printf '%b' 'xong.' ;;
+    un_done2)       printf '%b' ' Xóa tiếp bin claude-acc khỏi PATH nếu muốn gỡ hoàn toàn.' ;;
+
+    err_only_names) printf '%b' 'lệnh này chỉ nhận tên acc. Ví dụ: claude-acc %s work personal' ;;
+    err_unknown_acc) printf '%b' 'không biết acc "%s". Xem danh sách: claude-acc ls' ;;
+    err_no_accs)    printf '%b' 'không có acc nào để chạy.' ;;
+    warm_running)   printf '%b' 'Gọi một request nhỏ cho %s acc (song song)…' ;;
+    warm_opened)    printf '%b' 'đã mở cửa sổ 5h' ;;
+    warm_lost)      printf '%b' 'mất token — chạy: claude-acc add %s' ;;
+    warm_noresult)  printf '%b' 'không có kết quả' ;;
+    warm_all_ok)    printf '%b' 'Xong: %s/%s acc.' ;;
+    warm_some)      printf '%b' 'Xong: %s được, %s lỗi.' ;;
+
+    usg_running)    printf '%b' 'Hỏi hạn mức của %s acc (song song)…' ;;
+    usg_warn)       printf '%b' 'Lưu ý: việc hỏi là một request thật, nên nó CŨNG mở cửa sổ 5h của acc đó.' ;;
+    usg_hdr_acc)    printf '%b' 'acc' ;;
+    usg_hdr_5h)     printf '%b' 'cửa sổ 5h' ;;
+    usg_hdr_7d)     printf '%b' 'cửa sổ 7 ngày' ;;
+    usg_out)        printf '%b' 'HẾT HẠN MỨC' ;;
+    usg_out_back)   printf '%b' 'về lúc %s' ;;
+    usg_out_short)  printf '%b' 'HẾT' ;;
+    usg_left)       printf '%b' 'còn %s' ;;
+    usg_days)       printf '%b' '%s ngày' ;;
+    usg_day_h)      printf '%b' '1 ngày %sh' ;;
+    usg_most)       printf '%b' 'Còn nhiều nhất:' ;;
+    usg_most2)      printf '%b' ' (5h mới dùng %s%%)' ;;
+    usg_most3)      printf '%b' '  -> dùng cho repo đang làm:  claude-acc switch %s --here' ;;
+    usg_nocred)     printf '%b' 'không đọc được credential của main trong Keychain' ;;
+    usg_expired)    printf '%b' 'HTTP %s — token không còn dùng được' ;;
     err_ambig_ws)   printf '%b' 'thư mục này nằm trong NHIỀU workspace khác nhau (%s).\n     Mỗi workspace chạy claude ở folder [0] của nó, nên không đoán được.\n     Chỉ định thẳng: claude-acc switch <tên> --here --at <đường-dẫn-folder-0>' ;;
     err_git_track)  printf '%b' '%s của repo này ĐANG ĐƯỢC GIT THEO DÕI — ghi token vào đó là một\n     bước đi thẳng tới việc commit nhầm token lên remote.\n     Gỡ theo dõi trước rồi chạy lại:\n       git -C %s rm --cached %s' ;;
     git_excluded)   printf '%b' '  (đã thêm %s vào .git/info/exclude — chỉ máy này, không vào repo)' ;;
@@ -149,6 +262,119 @@ t_en() {
     probe_ok)       printf '%b' 'token works, the API answered' ;;
     trying_real)    printf '%b' 'trying a real request…' ;;
 
+    err_br_app)     printf '%b' '--browser needs an app name, e.g. --browser "Brave Browser"' ;;
+    err_br_bad)     printf '%b' '--browser needs an app name, not "%s" (did you leave the name out?)' ;;
+    err_br_app2)    printf '%b' '--browser needs an app name.' ;;
+    err_unknown)    printf '%b' 'unknown option: %s (see: claude-acc help)' ;;
+    err_unknown_cmd) printf '%b' 'unknown command: "%s". See: claude-acc help' ;;
+    err_extra)      printf '%b' 'unexpected argument: %s' ;;
+    usage_add)      printf '%b' 'usage: claude-acc add <name> [--browser <app>|--url-only] [--clip|--stdin|--no-setup]' ;;
+    add_overwrite)  printf '%b' '"%s" already has a token — it will be overwritten.' ;;
+    add_no_app)     printf '%b' 'no /Applications/%s.app found' ;;
+    add_no_app2)    printf '%b' ' — trying anyway, but check the app name.' ;;
+    add_default_br) printf '%b' 'This will open your DEFAULT BROWSER.' ;;
+    add_default_b2) printf '%b' ' If account "%s" lives in another browser, use\n  --browser "Brave Browser" | "Google Chrome" | "Safari"\nor --url-only to paste the URL yourself.' ;;
+    add_urlonly)    printf '%b' '--url-only mode:' ;;
+    add_urlonly2)   printf '%b' ' the auth URL is COPIED TO YOUR CLIPBOARD instead of opening a browser. Paste it (Cmd+V) into the window/profile you need.' ;;
+    add_browse_in)  printf '%b' 'Browsing in: %s' ;;
+    add_browse_in2) printf '%b' ' — if it opens the wrong profile, `claude setup-token` also prints the URL below so you can move it yourself.' ;;
+    add_note)       printf '%b' 'After you click Authorize (or paste the code if asked), the token is\ncaptured automatically — no copy/paste. If capture fails for any reason,\nyou will be asked to paste it by hand right after.' ;;
+    add_caught)     printf '%b' 'token captured automatically' ;;
+    add_caught2)    printf '%b' ' (%s…%s, %s chars) — no copy/paste needed.' ;;
+    add_nocatch)    printf '%b' 'could not capture the token from setup-token output.' ;;
+    add_nocatch2)   printf '%b' ' Paste it below.' ;;
+    err_clip)       printf '%b' 'the clipboard has no "sk-ant-…" string. Copy the token and run this again.' ;;
+    add_from_clip)  printf '%b' 'from clipboard: %s…%s (%s chars)' ;;
+    err_empty_tok)  printf '%b' 'empty token, aborted.' ;;
+    err_keychain)   printf '%b' 'could not write to the Keychain.' ;;
+    add_saved)      printf '%b' 'saved "%s". Verifying with a real request…' ;;
+    add_ready)      printf '%b' '"%s" is ready.' ;;
+    add_ready2)     printf '%b' ' Use: claude-acc switch %s' ;;
+    add_bad)        printf '%b' 'token stored, but the API could not be reached.' ;;
+    add_bad2)       printf '%b' '  Run `claude-acc add %s --browser "<the browser holding that account>"` again.' ;;
+    tok_prompt)     printf '%b' 'Token for "%s"' ;;
+    tok_prompt2)    printf '%b' ' — paste it and press Enter (input is hidden), or press Enter to take it from the clipboard:' ;;
+    tok_got)        printf '%b' 'got: %s…%s (%s chars)' ;;
+
+    usage_login)    printf '%b' 'usage: claude-acc login [--browser <app>|--url-only]' ;;
+    login_warn)     printf '%b' 'Warning:' ;;
+    login_warn2)    printf '%b' ' this OVERWRITES the Keychain credential — the current "main"' ;;
+    login_warn3)    printf '%b' 'account is replaced. Token accounts are unaffected.' ;;
+    login_result)   printf '%b' 'Result:' ;;
+
+    usage_rm)       printf '%b' 'usage: claude-acc rm <name>' ;;
+    rm_notfound)    printf '%b' 'no Keychain token found for "%s" (removing it from the list anyway).' ;;
+    rm_pinned)      printf '%b' '"%s" is currently pinned — unpinning it too.' ;;
+    rm_done)        printf '%b' 'removed "%s".' ;;
+
+    ls_global)      printf '%b' 'GLOBAL  ' ;;
+    ls_here)        printf '%b' 'HERE    ' ;;
+    ls_gui)         printf '%b' 'GUI     ' ;;
+    ls_pin_of)      printf '%b' 'pin of %s' ;;
+    ls_nopin)       printf '%b' 'no pin here — follows the global one' ;;
+    ls_main_desc)   printf '%b' 'Keychain — full connectors, Remote Control' ;;
+    ls_sub)         printf '%b' 'token accounts' ;;
+    ls_sub_desc)    printf '%b' 'token — no connectors' ;;
+    ls_lost_tok)    printf '%b' 'token missing — run: claude-acc add %s' ;;
+    ls_none)        printf '%b' 'no token accounts yet. Add one: claude-acc add <name>' ;;
+    ls_pins)        printf '%b' 'DIRECTORY PINS' ;;
+    ls_pins_hint)   printf '%b' 'claude-acc switch <name> --here' ;;
+    ls_dir_gone)    printf '%b' 'directory is gone — claude-acc sync' ;;
+
+    usage_run)      printf '%b' 'usage: claude-acc run <name|main> [-- <args for claude>]' ;;
+    run_dirpin)     printf '%b' 'this directory pins account "%s" (%s) — it overrides `run`.\n     Move the pin: claude-acc switch %s --here\n     Drop the pin: claude-acc switch off --here' ;;
+    run_glbpin)     printf '%b' 'account "%s" is pinned in ~/.claude/settings.json — it overrides `run`.\n     %s' ;;
+    run_fix_main)   printf '%b' 'Unpin: claude-acc switch main' ;;
+    run_fix_acc)    printf '%b' 'Repin: claude-acc switch %s' ;;
+    usage_env)      printf '%b' 'usage: eval "$(claude-acc env <name|main>)"' ;;
+
+    usage_check)    printf '%b' 'usage: claude-acc check <name|main>' ;;
+    chk_main_ok)    printf '%b' 'main works' ;;
+    chk_main_bad)   printf '%b' 'main does NOT work' ;;
+    chk_main_bad2)  printf '%b' ' — run: claude auth login' ;;
+    chk_ok)         printf '%b' '%s works' ;;
+    chk_bad)        printf '%b' '%s does NOT work' ;;
+    chk_bad2)       printf '%b' ' — run again: claude-acc add %s (answer Y)' ;;
+
+    un_willremove)  printf '%b' 'This will remove:' ;;
+    un_tok)         printf '%b' '  - the Keychain token for "%s"' ;;
+    un_cfg)         printf '%b' '  - %s (the account list)' ;;
+    un_pin)         printf '%b' '  - the pin and token in %s' ;;
+    un_glob)        printf '%b' '  - the pin in %s (back to "main")' ;;
+    un_bak)         printf '%b' '  - %s (backup copy, still holds an old token)' ;;
+    un_self)        printf '%b' 'After this, delete the binary yourself: %s' ;;
+    un_confirm)     printf '%b' 'Confirm removal? [y/N] ' ;;
+    un_cancel)      printf '%b' 'cancelled.' ;;
+    un_cantclean)   printf '%b' '  could not clean: %s' ;;
+    un_done)        printf '%b' 'done.' ;;
+    un_done2)       printf '%b' ' Remove the claude-acc binary from PATH to uninstall completely.' ;;
+
+    err_only_names) printf '%b' 'this command only takes account names. Example: claude-acc %s work personal' ;;
+    err_unknown_acc) printf '%b' 'unknown account "%s". See the list: claude-acc ls' ;;
+    err_no_accs)    printf '%b' 'no accounts to run.' ;;
+    warm_running)   printf '%b' 'Sending one small request for %s accounts (in parallel)…' ;;
+    warm_opened)    printf '%b' '5-hour window started' ;;
+    warm_lost)      printf '%b' 'token missing — run: claude-acc add %s' ;;
+    warm_noresult)  printf '%b' 'no result' ;;
+    warm_all_ok)    printf '%b' 'Done: %s/%s accounts.' ;;
+    warm_some)      printf '%b' 'Done: %s ok, %s failed.' ;;
+
+    usg_running)    printf '%b' 'Asking %s accounts for their limits (in parallel)…' ;;
+    usg_warn)       printf '%b' 'Note: asking IS a real request, so it also starts the 5-hour window for that account.' ;;
+    usg_hdr_acc)    printf '%b' 'account' ;;
+    usg_hdr_5h)     printf '%b' '5-hour window' ;;
+    usg_hdr_7d)     printf '%b' '7-day window' ;;
+    usg_out)        printf '%b' 'LIMIT REACHED' ;;
+    usg_out_back)   printf '%b' 'back at %s' ;;
+    usg_out_short)  printf '%b' 'OUT' ;;
+    usg_left)       printf '%b' '%s left' ;;
+    usg_days)       printf '%b' '%s days' ;;
+    usg_day_h)      printf '%b' '1 day %sh' ;;
+    usg_most)       printf '%b' 'Most headroom:' ;;
+    usg_most2)      printf '%b' ' (5h only %s%% used)' ;;
+    usg_most3)      printf '%b' '  -> use it for the repo you are in:  claude-acc switch %s --here' ;;
+    usg_nocred)     printf '%b' 'could not read the main credential from the Keychain' ;;
+    usg_expired)    printf '%b' 'HTTP %s — token no longer usable' ;;
     err_ambig_ws)   printf '%b' 'this directory belongs to SEVERAL different workspaces (%s).\n     Each one runs claude in its own folder [0], so this is not guessable.\n     Name it directly: claude-acc switch <name> --here --at <path-to-folder-0>' ;;
     err_git_track)  printf '%b' '%s in this repo is TRACKED BY GIT — writing a token into it is one\n     step away from committing that token to a remote.\n     Untrack it first, then run this again:\n       git -C %s rm --cached %s' ;;
     git_excluded)   printf '%b' '  (added %s to .git/info/exclude — this machine only, never in the repo)' ;;
@@ -561,8 +787,8 @@ EOF
 # thi khong biet dan duoc hay chua. Bo trong + Enter thi lay tu clipboard.
 read_token() {
   local name="$1" raw=""
-  printf '%sToken cho '\''%s'\''%s — dan vao roi Enter (ky tu se bi an), hoac chi Enter de lay tu clipboard:\n> ' \
-    "$c_b" "$name" "$c_0" >&2
+  printf '%s%s%s%s\n> ' \
+    "$c_b" "$(tp tok_prompt "$1")" "$c_0" "$(t tok_prompt2)" >&2
   # Dung `read -s`: token khong bao gio duoc echo ra man hinh/scrollback
   # (tranh lo qua ghi hinh terminal, tmux log, chia se man hinh). De bu lai
   # viec khong thay minh go gi, in ngay ban xem truoc da che (prefix/suffix/
@@ -578,8 +804,7 @@ read_token() {
     raw="$(trim "$(token_from_clip)")"
   fi
   if [[ -n "$raw" ]]; then
-    printf '%sda nhan: %s…%s (%d ky tu)%s\n' \
-      "$c_dim" "${raw:0:14}" "${raw: -4}" "${#raw}" "$c_0" >&2
+    printf '%s%s%s\n' "$c_dim" "$(tp tok_got "${raw:0:14}" "${raw: -4}" "${#raw}")" "$c_0" >&2
   fi
   printf '%s' "$raw"
 }
@@ -605,41 +830,39 @@ cmd_add() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --browser)  browser="${2:-}"
-                  [[ -n "$browser" ]] || die "--browser can ten app, vd: --browser \"Brave Browser\""
-                  [[ "$browser" != -* ]] || die "--browser can ten app, khong phai '$browser' (thieu ten app truoc do?)"
+                  [[ -n "$browser" ]] || die "$(t err_br_app)"
+                  [[ "$browser" != -* ]] || die "$(tp err_br_bad "$browser")"
                   shift 2 ;;
       --url-only) browser="__clip__"; shift ;;
       --clip)     mode="clip"; shift ;;
       --stdin)    mode="stdin"; shift ;;
       --no-setup) run_setup=0; shift ;;
-      -*)         die "tuy chon khong biet: $1 (xem: claude-acc help)" ;;
-      *)          [[ -z "$name" ]] || die "thua tham so: $1"; name="$1"; shift ;;
+      -*)         die "$(tp err_unknown "$1")" ;;
+      *)          [[ -z "$name" ]] || die "$(tp err_extra "$1")"; name="$1"; shift ;;
     esac
   done
-  [[ -n "$name" ]] || die "dung: claude-acc add <ten-acc> [--browser <app>|--url-only] [--clip|--stdin|--no-setup]"
+  [[ -n "$name" ]] || die "$(t usage_add)"
   valid_name "$name"
 
   if security find-generic-password -s "$SVC" -a "$name" -w >/dev/null 2>&1; then
-    info "${c_y}'$name' da co token — se ghi de.${c_0}"
+    info "${c_y}$(tp add_overwrite "$name")${c_0}"
   fi
 
   if [[ -n "$browser" && "$browser" != "__clip__" && ! -d "/Applications/$browser.app" ]]; then
-    info "${c_y}khong thay /Applications/$browser.app${c_0} — van thu, nhung kiem tra lai ten app."
+    info "${c_y}$(tp add_no_app "$browser")${c_0}$(t add_no_app2)"
   fi
 
   local wrapper="" tok=""
   if (( run_setup )); then
     case "$browser" in
-      "")        info "\n${c_y}Se mo BROWSER MAC DINH.${c_0} Neu acc '$name' nam o browser khac, dung\n  --browser \"Brave Browser\" | \"Google Chrome\" | \"Safari\"\nhoac --url-only de tu dan URL." ;;
-      __clip__)  wrapper="$(mk_browser_wrapper __clip__)"; info "\n${c_b}Che do --url-only:${c_0} URL duyet se tu dong duoc COPY VAO CLIPBOARD (khong tu mo browser). Dan (Cmd+V) vao dung cua so/profile can dang nhap." ;;
-      *)         wrapper="$(mk_browser_wrapper "$browser")"; info "\n${c_b}Se duyet trong: $browser${c_0} — neu no mo nham profile, \`claude setup-token\` cung se tu in URL o ben duoi de ban tu dan sang cua so dung." ;;
+      "")        info "\n${c_y}$(t add_default_br)${c_0}$(tp add_default_b2 "$name")" ;;
+      __clip__)  wrapper="$(mk_browser_wrapper __clip__)"; info "\n${c_b}$(t add_urlonly)${c_0}$(t add_urlonly2)" ;;
+      *)         wrapper="$(mk_browser_wrapper "$browser")"; info "\n${c_b}$(tp add_browse_in "$browser")${c_0}$(t add_browse_in2)" ;;
     esac
 
     cat >&2 <<EOF
 
-${c_dim}Sau khi ban bam Authorize (hoac dan code neu duoc hoi), token se duoc
-tu dong bat lai — khong can copy/paste. Neu vi ly do nao do khong bat duoc,
-ban se duoc hoi dan token thu cong ngay sau day.${c_0}
+${c_dim}$(t add_note)${c_0}
 
 EOF
 
@@ -654,9 +877,9 @@ EOF
     info "${c_dim}--------------------------${c_0}"
 
     if [[ -n "$tok" ]]; then
-      info "${c_g}✓ da tu bat duoc token${c_0} (${tok:0:14}…${tok: -4}, ${#tok} ky tu) — khong can copy/paste."
+      info "${c_g}✓ $(t add_caught)${c_0}$(tp add_caught2 "${tok:0:14}" "${tok: -4}" "${#tok}")"
     else
-      info "${c_y}khong bat duoc token tu output cua setup-token.${c_0} Dan tay ben duoi."
+      info "${c_y}$(t add_nocatch)${c_0}$(t add_nocatch2)"
     fi
   fi
 
@@ -667,13 +890,13 @@ EOF
   if [[ -z "$tok" ]]; then
     case "$mode" in
       clip)  tok="$(token_from_clip)"
-             [[ -n "$tok" ]] || die "clipboard khong chua chuoi 'sk-ant-…'. Copy token roi chay lai."
-             info "${c_dim}lay tu clipboard: ${tok:0:14}…${tok: -4} (${#tok} ky tu)${c_0}" ;;
+             [[ -n "$tok" ]] || die "$(t err_clip)"
+             info "${c_dim}$(tp add_from_clip "${tok:0:14}" "${tok: -4}" "${#tok}")${c_0}" ;;
       stdin) IFS= read -r tok || true; tok="$(trim "$tok")" ;;
       *)     tok="$(read_token "$name")" ;;
     esac
   fi
-  [[ -n "$tok" ]] || die "token rong, huy."
+  [[ -n "$tok" ]] || die "$(t err_empty_tok)"
 
   if [[ "$tok" != sk-ant-oat01-* ]]; then
     cat >&2 <<EOF
@@ -690,10 +913,10 @@ EOF
     -s "$SVC" -a "$name" -w "$tok" \
     -D "Claude Code account token" \
     -j "Token dang nhap Claude Code cho acc '$name' (quan ly boi claude-acc)" \
-    || die "khong ghi duoc vao Keychain."
+    || die "$(t err_keychain)"
 
   remember "$name"
-  info "${c_dim}da luu '$name'. Dang kiem tra bang mot request that…${c_0}"
+  info "${c_dim}$(tp add_saved "$name")${c_0}"
 
   # `probe` la ham co san trong chinh script nay, subshell da thua ke duoc —
   # khong can `bash -c "$(declare -f probe); probe"`. Va export trong subshell
@@ -702,10 +925,10 @@ EOF
   # doc duoc trong luc lenh chay. export/subshell khong tao tien trinh nao co
   # token trong argv ca.
   if ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; probe ) >&2; then
-    info "${c_g}✓ '$name' san sang.${c_0} Dung: claude-acc switch $name"
+    info "${c_g}✓ $(tp add_ready "$name")${c_0}$(tp add_ready2 "$name")"
   else
-    info "${c_r}✗ token luu roi nhung KHONG goi duoc API.${c_0}"
-    info "  Chay lai \`claude-acc add $name --browser \"<browser cua acc do>\"\`."
+    info "${c_r}✗ $(t add_bad)${c_0}"
+    info "$(tp add_bad2 "$name")"
     return 1
   fi
 }
@@ -799,7 +1022,7 @@ cmd_here() {
       --at)  at="${2:-}"; [[ -n "$at" ]] || die "$(t err_at_needs)"; shift 2 ;;
       --at=*) at="${1#*=}"; shift ;;
       --no-check) check=0; shift ;;
-      -*)    die "tuy chon khong biet: '$1'" ;;
+      -*)    die "$(tp err_unknown "$1")" ;;
       *)     [[ -z "$name" ]] || die "$(tp err_one_acc "$1")"
              name="$1"; shift ;;
     esac
@@ -935,7 +1158,7 @@ warm_one() {
   mkdir -p "$dir/.claude"
   if [[ "$acc" != "main" ]]; then
     if ! tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)"; then
-      printf 'ERR\tmat token — chay: claude-acc add %s\n' "$acc" > "$out_file"
+      printf 'ERR\t%s\n' "$(tp warm_lost "$acc")" > "$out_file"
       return
     fi
   fi
@@ -962,15 +1185,15 @@ cmd_warm() {
   else
     for a in "$@"; do
       case "$a" in
-        -*) die "lenh nay chi nhan ten acc. Vi du: claude-acc trigger work personal" ;;
+        -*) die "$(tp err_only_names trigger)" ;;
         main) ;;
         *)  valid_name "$a"
-            known "$a" || die "khong biet acc '$a'. Xem danh sach: claude-acc ls" ;;
+            known "$a" || die "$(tp err_unknown_acc "$a")" ;;
       esac
       accs+=("$a")
     done
   fi
-  [[ ${#accs[@]} -gt 0 ]] || die "khong co acc nao de trigger."
+  [[ ${#accs[@]} -gt 0 ]] || die "$(t err_no_accs)"
 
   local base
   base="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-warm.XXXXXX")" || die "$(t err_tmpdir)"
@@ -978,7 +1201,7 @@ cmd_warm() {
   # Token nam trong cac file duoi $base — don ca khi bi Ctrl+C.
   trap 'rm -rf "$base"' EXIT INT TERM
 
-  info "${c_dim}Goi mot request nho cho ${#accs[@]} acc (song song)…${c_0}"
+  info "${c_dim}$(tp warm_running "${#accs[@]}")${c_0}"
   for a in "${accs[@]}"; do
     warm_one "$a" "$base/$a" "$base/res.$a" &
   done
@@ -986,10 +1209,10 @@ cmd_warm() {
 
   local ok=0 bad=0 line st msg
   for a in "${accs[@]}"; do
-    line="$(cat "$base/res.$a" 2>/dev/null || printf 'ERR\tkhong co ket qua\n')"
+    line="$(cat "$base/res.$a" 2>/dev/null || printf 'ERR\t%s\n' "$(t warm_noresult)")"
     st="${line%%$'\t'*}"; msg="${line#*$'\t'}"
     if [[ "$st" == "OK" ]]; then
-      printf '  %s✓%s %-10s %sda mo cua so 5h%s\n' "$c_g" "$c_0" "$a" "$c_dim" "$c_0"
+      printf '  %s✓%s %-10s %s%s%s\n' "$c_g" "$c_0" "$a" "$c_dim" "$(t warm_opened)" "$c_0"
       ok=$((ok+1))
     else
       printf '  %s✗%s %-10s %s\n' "$c_r" "$c_0" "$a" "$msg"
@@ -999,9 +1222,9 @@ cmd_warm() {
   rm -rf "$base"; trap - EXIT INT TERM
   info ""
   if [[ $bad -eq 0 ]]; then
-    info "${c_g}Xong: $ok/$ok acc.${c_0}"
+    info "${c_g}$(tp warm_all_ok "$ok" "$ok")${c_0}"
   else
-    info "${c_y}Xong: $ok duoc, $bad loi.${c_0}"
+    info "${c_y}$(tp warm_some "$ok" "$bad")${c_0}"
     return 1
   fi
 }
@@ -1034,10 +1257,10 @@ PYEOF
 usage_one() {
   local acc="$1" out_file="$2" tok=""
   if [[ "$acc" == "main" ]]; then
-    tok="$(main_access_token)" || { printf 'ERR\tkhong doc duoc credential cua main trong Keychain\n' > "$out_file"; return; }
+    tok="$(main_access_token)" || { printf 'ERR\t%s\n' "$(t usg_nocred)" > "$out_file"; return; }
   else
     tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)" \
-      || { printf 'ERR\tmat token — chay: claude-acc add %s\n' "$acc" > "$out_file"; return; }
+      || { printf 'ERR\t%s\n' "$(tp warm_lost "$acc")" > "$out_file"; return; }
   fi
 
   CLAUDE_ACC_TOK="$tok" python3 - > "$out_file" <<'PYEOF'
@@ -1083,9 +1306,9 @@ cmd_usage() {
   else
     for a in "$@"; do
       case "$a" in
-        -*)   die "lenh nay chi nhan ten acc. Vi du: claude-acc usage work personal" ;;
+        -*)   die "$(tp err_only_names usage)" ;;
         main) ;;
-        *)    valid_name "$a"; known "$a" || die "khong biet acc '$a'. Xem: claude-acc ls" ;;
+        *)    valid_name "$a"; known "$a" || die "$(tp err_unknown_acc "$a")" ;;
       esac
       accs+=("$a")
     done
@@ -1095,17 +1318,24 @@ cmd_usage() {
   chmod 700 "$base"
   trap 'rm -rf "$base"' EXIT INT TERM
 
-  info "${c_dim}Hoi han muc cua ${#accs[@]} acc (song song)…${c_0}"
-  info "${c_y}Luu y: viec hoi la mot request that, nen no CUNG mo cua so 5h cua acc do.${c_0}"
+  info "${c_dim}$(tp usg_running "${#accs[@]}")${c_0}"
+  info "${c_y}$(t usg_warn)${c_0}"
   for a in "${accs[@]}"; do usage_one "$a" "$base/res.$a" & done
   wait
 
   printf '\n'
+  T_ACC="$(t usg_hdr_acc)" T_5H="$(t usg_hdr_5h)" T_7D="$(t usg_hdr_7d)" \
+  T_OUT="$(t usg_out)" T_BACK="$(t usg_out_back)" T_SHORT="$(t usg_out_short)" \
+  T_LEFT="$(t usg_left)" T_DAYS="$(t usg_days)" T_DAYH="$(t usg_day_h)" \
+  T_MOST="$(t usg_most)" T_MOST2="$(t usg_most2)" T_MOST3="$(t usg_most3)" \
   python3 - "$base" "${accs[@]}" <<'PYEOF'
 import os, sys, time
 
 G, R, Y, D, Z = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
 base, names = sys.argv[1], sys.argv[2:]
+
+def E(key, fallback):
+    return os.environ.get(key) or fallback
 
 def read(n):
     try:
@@ -1132,14 +1362,14 @@ def short(ts, with_date=False):
     d, rem = divmod(lf, 86400)
     h, m = divmod(rem // 60, 60)
     if d >= 2:
-        gap = "%d ngay" % d
+        gap = E("T_DAYS", "%s days") % d
     elif d == 1:
-        gap = "1 ngay %dh" % h
+        gap = E("T_DAYH", "1 day %sh") % h
     elif h:
         gap = "%dh%02d" % (h, m)
     else:
-        gap = "%dp" % m
-    return "%s (con %s)" % (when, gap)
+        gap = "%dm" % m
+    return "%s (%s)" % (when, E("T_LEFT", "%s left") % gap)
 
 ANSI = __import__("re").compile("\033\\[[0-9;]*m")
 
@@ -1160,7 +1390,8 @@ def cell(u):
     n = max(0, min(10, int(round(v * 10))))
     return "%s %3d%%" % ("#" * n + "." * (10 - n), round(v * 100))
 
-print("%s  %-10s %-30s %s%s" % (Y, "acc", "cua so 5h", "cua so 7 ngay", Z))
+print("%s  %-10s %-30s %s%s" % (Y, E("T_ACC", "account"),
+                                 E("T_5H", "5-hour window"), E("T_7D", "7-day window"), Z))
 best = []
 for name in names:
     f = read(name).split("\t")
@@ -1171,10 +1402,11 @@ for name in names:
     u5, r5, s5, u7, r7, s7 = f[1], f[2], f[3], f[4], f[5], f[6]
     ok = (s5 == "allowed" and s7 == "allowed")
     if s5 != "allowed":
-        five = "%sHET HAN MUC%s  ve luc %s" % (R, Z, short(r5))
+        five = "%s%s%s  %s" % (R, E("T_OUT", "LIMIT REACHED"), Z,
+                               E("T_BACK", "back at %s") % short(r5))
     else:
         five = "%s  %s" % (cell(u5), short(r5))
-    seven = ("%sHET%s" % (R, Z)) if s7 != "allowed" else "%3d%%  %s" % (
+    seven = ("%s%s%s" % (R, E("T_SHORT", "OUT"), Z)) if s7 != "allowed" else "%3d%%  %s" % (
         round((pct(u7) or 0) * 100), short(r7, with_date=True))
     mark = "%s*%s" % (G, Z) if ok else "%s!%s" % (R, Z)
     print(" %s %-10s %s %s" % (mark, name, pad_vis(five, 30), seven))
@@ -1183,9 +1415,9 @@ for name in names:
 
 if len(best) > 1:
     best.sort()
-    print("\n%sCon nhieu nhat: %s%s%s (5h moi dung %d%%)" % (
-        D, Z, best[0][1], D, round(best[0][0] * 100)))
-    print("  -> dung cho repo dang lam:  claude-acc switch %s --here%s" % (best[0][1], Z))
+    print("\n%s%s %s%s%s%s" % (D, E("T_MOST", "Most headroom:"), Z, best[0][1], D,
+                               E("T_MOST2", " (5h only %s%%%% used)") % round(best[0][0] * 100)))
+    print("%s%s" % (E("T_MOST3", "  -> use it here:  claude-acc switch %s --here") % best[0][1], Z))
 PYEOF
   rm -rf "$base"; trap - EXIT INT TERM
 }
@@ -1220,20 +1452,20 @@ cmd_login() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --browser)  browser="${2:-}"
-                  [[ -n "$browser" ]] || die "--browser can ten app."
-                  [[ "$browser" != -* ]] || die "--browser can ten app, khong phai '$browser' (thieu ten app truoc do?)"
+                  [[ -n "$browser" ]] || die "$(t err_br_app2)"
+                  [[ "$browser" != -* ]] || die "$(tp err_br_bad "$browser")"
                   shift 2 ;;
       --url-only) browser="__clip__"; shift ;;
-      *)          die "dung: claude-acc login [--browser <app>|--url-only]" ;;
+      *)          die "$(t usage_login)" ;;
     esac
   done
 
-  info "${c_y}Luu y:${c_0} lenh nay GHI DE credential trong Keychain — acc 'main' hien tai"
-  info "se bi thay the. Cac acc phu (dung token) khong bi anh huong."
+  info "${c_y}$(t login_warn)${c_0}$(t login_warn2)"
+  info "$(t login_warn3)"
 
   local wrapper=""
   [[ -n "$browser" ]] && wrapper="$(mk_browser_wrapper "$browser")"
-  [[ -n "$browser" && "$browser" != "__clip__" ]] && info "${c_b}Se duyet trong: $browser${c_0}"
+  [[ -n "$browser" && "$browser" != "__clip__" ]] && info "${c_b}$(tp add_browse_in "$browser")${c_0}"
 
   # Khong dung `</dev/tty`: xem giai thich trong cmd_add() — mo lai stdin qua
   # /dev/tty lam luong "Paste code here" cua claude khong nhan duoc phim/paste.
@@ -1245,22 +1477,22 @@ cmd_login() {
   fi
 
   { stty sane </dev/tty; } >/dev/null 2>&1 || true
-  info "\n${c_dim}Ket qua:${c_0}"
+  info "\n${c_dim}$(t login_result)${c_0}"
   cmd_check main
 }
 
 cmd_rm() {
   local name="${1:-}"
-  [[ -n "$name" ]] || die "dung: claude-acc rm <ten-acc>"
+  [[ -n "$name" ]] || die "$(t usage_rm)"
   valid_name "$name"
   security delete-generic-password -s "$SVC" -a "$name" >/dev/null 2>&1 \
-    || info "${c_y}khong tim thay token cua '$name' trong Keychain (van go khoi danh sach).${c_0}"
+    || info "${c_y}$(tp rm_notfound "$name")${c_0}"
   forget "$name"
   if [[ "$(pinned_acc)" == "$name" ]]; then
-    info "${c_y}'$name' dang duoc ghim — bo ghim luon.${c_0}"
+    info "${c_y}$(tp rm_pinned "$name")${c_0}"
     cmd_switch main >&2 || true
   fi
-  info "${c_g}da xoa '$name'.${c_0}"
+  info "${c_g}$(tp rm_done "$name")${c_0}"
 }
 
 cmd_ls() {
@@ -1284,18 +1516,18 @@ print(walk(d) or "")
 ' 2>/dev/null || true)"
 
   local pin; pin="$(pinned_acc)"
-  printf '%sTOAN CUC%s  %s  %s(~/.claude/settings.json)%s\n' \
-    "$c_b" "$c_0" "${pin:-main}" "$c_dim" "$c_0"
+  printf '%s%s%s  %s  %s(~/.claude/settings.json)%s\n' \
+    "$c_b" "$(t ls_global)" "$c_0" "${pin:-main}" "$c_dim" "$c_0"
 
   # Chay claude o THU MUC NAY thi acc nao that su co hieu luc? Settings cap
   # repo chi an o dung thu muc chua .claude/, nen phai hoi theo tung thu muc.
   local hp; hp="$(repo_pin "$(pwd -P)")"
   if [[ -n "$hp" ]]; then
-    printf '%sTAI DAY%s   %s  %s(ghim cua %s)%s\n' \
-      "$c_b" "$c_0" "$hp" "$c_dim" "$(pwd -P)" "$c_0"
+    printf '%s%s%s  %s  %s(%s)%s\n' \
+      "$c_b" "$(t ls_here)" "$c_0" "$hp" "$c_dim" "$(tp ls_pin_of "$(pwd -P)")" "$c_0"
   else
-    printf '%sTAI DAY%s   %s  %s(khong ghim rieng — theo toan cuc)%s\n' \
-      "$c_b" "$c_0" "${pin:-main}" "$c_dim" "$c_0"
+    printf '%s%s%s  %s  %s(%s)%s\n' \
+      "$c_b" "$(t ls_here)" "$c_0" "${pin:-main}" "$c_dim" "$(t ls_nopin)" "$c_0"
   fi
 
   # GUI cua Cursor/VS Code chay o folder [0] cua workspace, khong phai o thu
@@ -1305,32 +1537,32 @@ print(walk(d) or "")
   gdir="${line%%$'\t'*}"; gnote="${line#*$'\t'}"
   if [[ -n "$gdir" && "$gdir" != "$(pwd -P)" ]]; then
     gpin="$(repo_pin "$gdir")"
-    printf '%sGUI%s       %s  %s(%s%s)%s\n' \
-      "$c_b" "$c_0" "${gpin:-${pin:-main}}" "$c_dim" "$gdir" \
+    printf '%s%s%s  %s  %s(%s%s)%s\n' \
+      "$c_b" "$(t ls_gui)" "$c_0" "${gpin:-${pin:-main}}" "$c_dim" "$gdir" "${gnote:+ — $gnote}" "$c_0"
       "${gnote:+ — $gnote}" "$c_0"
   fi
   printf '\n'
 
-  printf '%smain%s  %s(Keychain — day du connectors, Remote Control)%s\n' \
-    "$c_b" "$c_0" "$c_dim" "$c_0"
+  printf '%smain%s  %s(%s)%s\n' \
+    "$c_b" "$c_0" "$c_dim" "$(t ls_main_desc)" "$c_0"
   [[ -n "$who" ]] && printf '        %s%s%s\n' "$c_dim" "$who" "$c_0"
 
   if [[ -s "$LIST" ]]; then
-    printf '\n%sacc phu%s %s(token — khong co connectors)%s\n' "$c_b" "$c_0" "$c_dim" "$c_0"
+    printf '\n%s%s%s %s(%s)%s\n' "$c_b" "$(t ls_sub)" "$c_0" "$c_dim" "$(t ls_sub_desc)" "$c_0"
     while IFS= read -r a; do
       [[ -n "$a" ]] || continue
       if security find-generic-password -s "$SVC" -a "$a" -w >/dev/null 2>&1; then
         printf '  %s✓%s %s\n' "$c_g" "$c_0" "$a"
       else
-        printf '  %s✗%s %s %s(mat token — chay: claude-acc add %s)%s\n' "$c_r" "$c_0" "$a" "$c_dim" "$a" "$c_0"
+        printf '  %s✗%s %s %s(%s)%s\n' "$c_r" "$c_0" "$a" "$c_dim" "$(tp ls_lost_tok "$a")" "$c_0"
       fi
     done < "$LIST"
   else
-    printf '\n%schua co acc phu nao. Them bang: claude-acc add <ten>%s\n' "$c_dim" "$c_0"
+    printf '\n%s%s%s\n' "$c_dim" "$(t ls_none)" "$c_0"
   fi
 
   if [[ -s "$REPOS" ]]; then
-    printf '\n%sGHIM THEO THU MUC%s %s(claude-acc here)%s\n' "$c_b" "$c_0" "$c_dim" "$c_0"
+    printf '\n%s%s%s %s(%s)%s\n' "$c_b" "$(t ls_pins)" "$c_0" "$c_dim" "$(t ls_pins_hint)" "$c_0"
     local d a mark
     while IFS=$'\t' read -r d a; do
       [[ -n "$d" ]] || continue
@@ -1339,8 +1571,8 @@ print(walk(d) or "")
       if [[ -d "$d" ]]; then
         printf '  %s %-8s %s\n' "$mark" "$a" "${d/#$HOME/~}"
       else
-        printf '  %s %-8s %s %s(thu muc khong con — claude-acc sync)%s\n' \
-          "$mark" "$a" "${d/#$HOME/~}" "$c_dim" "$c_0"
+        printf '  %s %-8s %s %s(%s)%s\n' \
+          "$mark" "$a" "${d/#$HOME/~}" "$c_dim" "$(t ls_dir_gone)" "$c_0"
       fi
     done < "$REPOS"
   fi
@@ -1348,7 +1580,7 @@ print(walk(d) or "")
 
 cmd_run() {
   local name="${1:-}"
-  [[ -n "$name" ]] || die "dung: claude-acc run <ten-acc|main> [-- <tham so cho claude>]"
+  [[ -n "$name" ]] || die "$(t usage_run)"
   shift
   [[ "${1:-}" == "--" ]] && shift
 
@@ -1358,19 +1590,15 @@ cmd_run() {
   # kiem no TRUOC — neu khong `run` se chay sai acc mot cach am tham.
   local hpin; hpin="$(repo_pin "$(pwd -P)")"
   if [[ -n "$hpin" && "$hpin" != "$name" ]]; then
-    die "thu muc nay dang GHIM acc '$hpin' ($(repo_file "$(pwd -P)")) — no de len \`run\`.
-     Doi ghim:  claude-acc here $name
-     Bo ghim :  claude-acc here off"
+    die "$(tp run_dirpin "$hpin" "$(repo_file "$(pwd -P)")" "$name")"
   fi
 
   local pin; pin="$(pinned_acc)"
   if [[ -n "$pin" && -z "$hpin" && "$pin" != "$name" ]]; then
     if [[ "$name" == "main" ]]; then
-      die "dang GHIM acc '$pin' trong ~/.claude/settings.json — no de len \`run\`.
-     Bo ghim: claude-acc switch main"
+      die "$(tp run_glbpin "$pin" "$(t run_fix_main)")"
     else
-      die "dang GHIM acc '$pin' trong ~/.claude/settings.json — no de len \`run\`.
-     Doi ghim: claude-acc switch $name"
+      die "$(tp run_glbpin "$pin" "$(tp run_fix_acc "$name")")"
     fi
   fi
 
@@ -1390,7 +1618,7 @@ cmd_run() {
 
 cmd_env() {
   local name="${1:-}"
-  [[ -n "$name" ]] || die "dung: eval \"\$(claude-acc env <ten-acc|main>)\""
+  [[ -n "$name" ]] || die "$(t usage_env)"
   if [[ "$name" == "main" ]]; then
     printf 'unset CLAUDE_CODE_OAUTH_TOKEN\n'
     return
@@ -1404,15 +1632,15 @@ cmd_env() {
 
 cmd_check() {
   local name="${1:-}"
-  [[ -n "$name" ]] || die "dung: claude-acc check <ten-acc|main>"
+  [[ -n "$name" ]] || die "$(t usage_check)"
 
   if [[ "$name" == "main" ]]; then
     env -u CLAUDE_CODE_OAUTH_TOKEN claude auth status --text
-    printf '%sdang thu mot request that…%s\n' "$c_dim" "$c_0" >&2
+    printf '%s%s%s\n' "$c_dim" "$(t trying_real)" "$c_0" >&2
     if ( unset CLAUDE_CODE_OAUTH_TOKEN; probe ); then
-      printf '%s✓ main dung duoc%s\n' "$c_g" "$c_0"
+      printf '%s✓ %s%s\n' "$c_g" "$(t chk_main_ok)" "$c_0"
     else
-      printf '%s✗ main KHONG dung duoc%s — chay: claude auth login\n' "$c_r" "$c_0"
+      printf '%s✗ %s%s%s\n' "$c_r" "$(t chk_main_bad)" "$c_0" "$(t chk_main_bad2)"
       return 1
     fi
     return
@@ -1421,33 +1649,33 @@ cmd_check() {
   valid_name "$name"
   local tok; tok="$(token_of "$name")"
   ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; claude auth status --text )
-  printf '%sdang thu mot request that…%s\n' "$c_dim" "$c_0" >&2
+  printf '%s%s%s\n' "$c_dim" "$(t trying_real)" "$c_0" >&2
   if ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; probe ); then
-    printf '%s✓ %s dung duoc%s\n' "$c_g" "$name" "$c_0"
+    printf '%s✓ %s%s\n' "$c_g" "$(tp chk_ok "$name")" "$c_0"
   else
-    printf '%s✗ %s KHONG dung duoc%s — chay lai: claude-acc add %s (chon Y)\n' \
-      "$c_r" "$name" "$c_0" "$name"
+    printf '%s✗ %s%s%s\n' \
+      "$c_r" "$(tp chk_bad "$name")" "$c_0" "$(tp chk_bad2 "$name")"
     return 1
   fi
 }
 
 cmd_uninstall() {
-  info "${c_b}Se go bo:${c_0}"
-  [[ -s "$LIST" ]] && while IFS= read -r a; do [[ -n "$a" ]] && info "  - token Keychain cua '$a'"; done < "$LIST"
-  info "  - $CFG_DIR (danh sach acc phu)"
+  info "${c_b}$(t un_willremove)${c_0}"
+  [[ -s "$LIST" ]] && while IFS= read -r a; do [[ -n "$a" ]] && info "$(tp un_tok "$a")"; done < "$LIST"
+  info "$(tp un_cfg "$CFG_DIR")"
   if [[ -s "$REPOS" ]]; then
     while IFS=$'\t' read -r _d _a; do
-      [[ -n "$_d" ]] && info "  - bo ghim + xoa token trong $(repo_file "$_d")"
+      [[ -n "$_d" ]] && info "$(tp un_pin "$(repo_file "$_d")")"
     done < "$REPOS"
   fi
-  [[ -n "$(pinned_acc)" ]] && info "  - bo ghim trong $SETTINGS (dua ve 'main')"
-  [[ -f "$SETTINGS.bak-claude-acc" ]] && info "  - $SETTINGS.bak-claude-acc (ban sao luu, con chua token cu)"
+  [[ -n "$(pinned_acc)" ]] && info "$(tp un_glob "$SETTINGS")"
+  [[ -f "$SETTINGS.bak-claude-acc" ]] && info "$(tp un_bak "$SETTINGS.bak-claude-acc")"
   local self; self="$(command -v claude-acc 2>/dev/null || printf '%s' "$0")"
-  info "${c_dim}Sau buoc nay, xoa tay file binh: $self${c_0}"
+  info "${c_dim}$(tp un_self "$self")${c_0}"
 
   local yn
-  read -r -p "Xac nhan xoa? [y/N] " yn </dev/tty || true
-  [[ "${yn:-n}" == [yY]* ]] || { info "da huy."; return 1; }
+  read -r -p "$(t un_confirm)" yn </dev/tty || true
+  [[ "${yn:-n}" == [yY]* ]] || { info "$(t un_cancel)"; return 1; }
 
   if [[ -s "$LIST" ]]; then
     while IFS= read -r a; do
@@ -1460,7 +1688,7 @@ cmd_uninstall() {
   if [[ -s "$REPOS" ]]; then
     while IFS=$'\t' read -r _d _a; do
       [[ -n "$_d" && -d "$_d" ]] || continue
-      write_repo_pin "$_d" off "" 2>/dev/null || info "${c_y}  khong don duoc: $(repo_file "$_d")${c_0}"
+      write_repo_pin "$_d" off "" 2>/dev/null || info "${c_y}$(tp un_cantclean "$(repo_file "$_d")")${c_0}"
     done < "$REPOS"
   fi
   [[ -n "$(pinned_acc)" ]] && cmd_switch main >&2 || true
@@ -1469,7 +1697,7 @@ cmd_uninstall() {
   # cuoi cung van song trong file .bak du nguoi dung tuong da xoa sach.
   rm -f "$SETTINGS.bak-claude-acc"
   rm -rf "$CFG_DIR"
-  info "${c_g}xong.${c_0} Xoa tiep binh claude-acc khoi PATH neu muon go hoan toan."
+  info "${c_g}$(t un_done)${c_0}$(t un_done2)"
 }
 
 cmd_help() {
@@ -1582,5 +1810,5 @@ case "${1:-help}" in
   uninstall)          shift; cmd_uninstall "$@" ;;
   version|-v|--version) printf 'claude-acc %s\n' "$VERSION" ;;
   help|-h|--help)     cmd_help ;;
-  *)                  die "lenh khong biet: '$1'. Xem: claude-acc help" ;;
+  *)                  die "$(tp err_unknown_cmd "$1")" ;;
 esac
