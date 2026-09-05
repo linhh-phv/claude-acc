@@ -21,18 +21,208 @@ SVC="claude-code-token"
 CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/claude-acc"
 LIST="$CFG_DIR/accounts"
 REPOS="$CFG_DIR/repos"
+LANGFILE="$CFG_DIR/lang"
 # Cho phep tro sang file khac de kiem thu ma khong dung vao acc that dang
 # dung. Bo trong -> dung file that.
 SETTINGS="${CLAUDE_ACC_SETTINGS:-$HOME/.claude/settings.json}"
 
+# ---------- ngon ngu / language -------------------------------------------
+#
+# bash 3.2 (ban macOS mac dinh) khong co mang ket hop, nen bang chuoi la mot
+# `case` — dai hon nhung chay duoc o moi may, khong doi nguoi dung cai bash 4.
+#
+# Chon ngon ngu: file cau hinh > bien LANG/LC_ALL cua he thong > tieng Anh.
+acc_lang() {
+  if [[ -s "$LANGFILE" ]]; then
+    local l; l="$(tr -d ' \n' < "$LANGFILE")"
+    case "$l" in vi|en) printf '%s' "$l"; return ;; esac
+  fi
+  case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+    vi*|*_VN*|*vi_VN*) printf 'vi' ;;
+    *)                 printf 'en' ;;
+  esac
+}
+ACC_LANG="$(acc_lang)"
+
+# t <key>       -> in ra chuoi thuan (khong mau, khong xuong dong)
+# tp <key> ...  -> nhu printf, dung cho chuoi co %s
+t()  { if [[ "$ACC_LANG" == "vi" ]]; then t_vi "$1"; else t_en "$1"; fi; }
+tp() { local f; f="$(t "$1")"; shift; printf "$f" "$@"; }
+
 c_dim=$'\033[2m'; c_b=$'\033[1m'; c_r=$'\033[31m'; c_g=$'\033[32m'; c_y=$'\033[33m'; c_0=$'\033[0m'
 if [[ ! -t 1 ]]; then c_dim=; c_b=; c_r=; c_g=; c_y=; c_0=; fi
 
-die()  { printf '%sloi:%s %s\n' "$c_r" "$c_0" "$*" >&2; exit 1; }
+# ---------- bang chuoi / string catalog -----------------------------------
+# Quy uoc: noi dung khong dung dau nhay don, de giu duoc literal '...' cua sh.
+# %s la cho printf cua tp().
+
+t_vi() {
+  case "$1" in
+    err_macos)      printf '%b' 'script này chỉ chạy trên macOS (dùng `security` của Keychain).' ;;
+    err_no_claude)  printf '%b' 'không tìm thấy `claude` trong PATH.' ;;
+    err_bad_name)   printf '%b' 'tên acc chỉ được chứa chữ, số, . _ - (nhận được: "%s")' ;;
+    err_main_res)   printf '%b' '"main" là tên dành riêng cho acc đăng nhập bằng Keychain.' ;;
+    err_no_token)   printf '%b' 'chưa có token cho "%s". Chạy: claude-acc add %s' ;;
+    err_tmpdir)     printf '%b' 'không tạo được thư mục tạm.' ;;
+    err_tmpfile)    printf '%b' 'không tạo được file tạm.' ;;
+    probe_ok)       printf '%b' 'token hợp lệ, gọi được API' ;;
+    trying_real)    printf '%b' 'đang thử một request thật…' ;;
+
+    err_ambig_ws)   printf '%b' 'thư mục này nằm trong NHIỀU workspace khác nhau (%s).\n     Mỗi workspace chạy claude ở folder [0] của nó, nên không đoán được.\n     Chỉ định thẳng: claude-acc switch <tên> --here --at <đường-dẫn-folder-0>' ;;
+    err_git_track)  printf '%b' '%s của repo này ĐANG ĐƯỢC GIT THEO DÕI — ghi token vào đó là một\n     bước đi thẳng tới việc commit nhầm token lên remote.\n     Gỡ theo dõi trước rồi chạy lại:\n       git -C %s rm --cached %s' ;;
+    git_excluded)   printf '%b' '  (đã thêm %s vào .git/info/exclude — chỉ máy này, không vào repo)' ;;
+    err_write_repo) printf '%b' 'không sửa được %s (file lỗi cú pháp JSON?)' ;;
+    err_write_glob) printf '%b' 'không sửa được %s (file lỗi cú pháp JSON?). Bản gốc: %s' ;;
+
+    usage_switch)   printf '%b' 'dùng: claude-acc switch <tên-acc|main>' ;;
+    sw_to_main)     printf '%b' 'Đã chuyển về "main"' ;;
+    sw_to_main2)    printf '%b' ' (credential Keychain — đầy đủ connectors).' ;;
+    sw_to_acc)      printf '%b' 'Đã chuyển sang "%s"' ;;
+    sw_to_acc2)     printf '%b' ' (token).' ;;
+    sw_plain)       printf '%b' 'Lưu ý: token nằm DẠNG VĂN BẢN trong %s (quyền 600).' ;;
+    sw_now)         printf '%b' 'Ăn ngay — KHÔNG cần Reload Window.' ;;
+    sw_now2)        printf '%b' 'CLI đọc lại settings.json ở TỪNG request, nên cả những phiên' ;;
+    sw_now3)        printf '%b' 'đang chạy (mọi cửa sổ, mọi repo) cũng đổi sang acc này ngay.' ;;
+    sw_pinned)      printf '%b' 'Nhưng KHÔNG đổi chỗ bạn đang đứng:' ;;
+    sw_pinned2)     printf '%b' ' nơi này ghim riêng acc "%s"' ;;
+    sw_pinned3)     printf '%b' '  (ghim cấp repo đè lên ghim toàn cục).' ;;
+    sw_fix1)        printf '%b' '  Đổi luôn chỗ này:  claude-acc switch %s --here' ;;
+    sw_fix2)        printf '%b' '  Bỏ ghim riêng   :  claude-acc switch off --here' ;;
+    sw_check)       printf '%b' 'Kiểm tra bằng một request thật…' ;;
+
+    err_one_acc)    printf '%b' 'chỉ nhận MỘT tên acc (nhận được thêm: "%s")' ;;
+    usage_here)     printf '%b' 'dùng: claude-acc switch <tên-acc|main|off> --here [--at <thư-mục>]\n       main = repo này dùng acc chính (Keychain) · off = bỏ ghim riêng' ;;
+    err_at_needs)   printf '%b' '--at cần một đường dẫn' ;;
+    err_no_dir)     printf '%b' 'không thấy thư mục: %s' ;;
+    err_not_pinned) printf '%b' 'thư mục này chưa ghim acc nào: %s' ;;
+    here_unpin)     printf '%b' 'Đã bỏ ghim cho: %s' ;;
+    err_prefix)     printf '%b' 'lỗi:' ;;
+    here_unpin2)    printf '%b' 'Từ giờ thư mục này theo acc toàn cục (claude-acc switch).' ;;
+    here_main)      printf '%b' 'Đã ghim "main"' ;;
+    here_main2)     printf '%b' ' (Keychain) cho: %s' ;;
+    here_acc)       printf '%b' 'Đã ghim "%s"' ;;
+    here_for)       printf '%b' ' cho: %s' ;;
+    here_plain)     printf '%b' 'Token nằm DẠNG VĂN BẢN trong %s (quyền 600).' ;;
+    here_ws)        printf '%b' '  %s — mọi tab chat của workspace này đều chạy ở đó,' ;;
+    here_ws2)       printf '%b' '  nên ghim áp cho cả workspace, không riêng một worktree.' ;;
+    here_diff)      printf '%b' '  (bạn đang đứng ở %s — ghi vào thư mục trên vì settings cấp' ;;
+    here_diff2)     printf '%b' '   repo chỉ ăn ở đúng thư mục claude chạy, không kế thừa xuống con.)' ;;
+    here_now)       printf '%b' 'Ăn ngay' ;;
+    here_now2)      printf '%b' ' — không cần Reload Window, không cần mở tab chat mới.' ;;
+    here_check)     printf '%b' 'Kiểm tra bằng một request thật ở đúng thư mục đó…' ;;
+    here_ok)        printf '%b' 'acc "%s" gọi được API tại thư mục đó.' ;;
+    here_fail)      printf '%b' 'ghim rồi nhưng KHÔNG gọi được API tại đó:' ;;
+
+    usage_reassign) printf '%b' 'dùng: claude-acc reassign <acc-cũ> <acc-mới|main>' ;;
+    ra_skip)        printf '%b' '  bỏ qua (thư mục không còn): %s' ;;
+    ra_none)        printf '%b' 'không có thư mục nào đang ghim "%s".' ;;
+    ra_done)        printf '%b' 'Đã chuyển %s thư mục từ "%s" sang "%s".' ;;
+    ra_missing)     printf '%b' '(%s thư mục trong sổ đăng ký đã không còn — chạy `claude-acc sync` để dọn.)' ;;
+    ra_now)         printf '%b' 'Ăn ngay cho cả các phiên đang mở ở những thư mục đó.' ;;
+
+    sync_drop)      printf '%b' '  dọn khỏi sổ đăng ký (thư mục không còn): %s' ;;
+    sync_lost)      printf '%b' '  bỏ qua %s — mất token của "%s" (chạy: claude-acc add %s)' ;;
+    sync_fix)       printf '%b' '  sửa lại: %s (%s -> %s)' ;;
+    sync_done)      printf '%b' 'Đã đồng bộ %s thư mục.' ;;
+    sync_fixn)      printf '%b' '(%s chỗ lệch so với sổ đăng ký, đã ghi lại.)' ;;
+    sync_gonen)     printf '%b' '(%s thư mục không còn, đã dọn khỏi sổ đăng ký.)' ;;
+    lang_current)   printf '%b' 'Ngôn ngữ hiện tại: %s (%s)' ;;
+    lang_src_file)  printf '%b' 'do bạn chọn' ;;
+    lang_src_auto)  printf '%b' 'tự nhận từ LANG của hệ thống' ;;
+    lang_howto)     printf '%b' 'Đổi: claude-acc lang vi | en | auto' ;;
+    lang_set)       printf '%b' 'Đã chuyển sang: %s' ;;
+    lang_set_auto)  printf '%b' 'Đã bỏ chọn tay — tự nhận từ hệ thống: %s' ;;
+    lang_bad)       printf '%b' 'chỉ nhận: vi | en | auto' ;;
+    *)              printf '%s' "$1" ;;
+  esac
+}
+
+t_en() {
+  case "$1" in
+    err_macos)      printf '%b' 'this script only runs on macOS (it uses the Keychain `security` CLI).' ;;
+    err_no_claude)  printf '%b' 'could not find `claude` in PATH.' ;;
+    err_bad_name)   printf '%b' 'an account name may only contain letters, digits, . _ - (got: "%s")' ;;
+    err_main_res)   printf '%b' '"main" is reserved for the account signed in through the Keychain.' ;;
+    err_no_token)   printf '%b' 'no token stored for "%s". Run: claude-acc add %s' ;;
+    err_tmpdir)     printf '%b' 'could not create a temporary directory.' ;;
+    err_tmpfile)    printf '%b' 'could not create a temporary file.' ;;
+    probe_ok)       printf '%b' 'token works, the API answered' ;;
+    trying_real)    printf '%b' 'trying a real request…' ;;
+
+    err_ambig_ws)   printf '%b' 'this directory belongs to SEVERAL different workspaces (%s).\n     Each one runs claude in its own folder [0], so this is not guessable.\n     Name it directly: claude-acc switch <name> --here --at <path-to-folder-0>' ;;
+    err_git_track)  printf '%b' '%s in this repo is TRACKED BY GIT — writing a token into it is one\n     step away from committing that token to a remote.\n     Untrack it first, then run this again:\n       git -C %s rm --cached %s' ;;
+    git_excluded)   printf '%b' '  (added %s to .git/info/exclude — this machine only, never in the repo)' ;;
+    err_write_repo) printf '%b' 'could not edit %s (invalid JSON?)' ;;
+    err_write_glob) printf '%b' 'could not edit %s (invalid JSON?). Original: %s' ;;
+
+    usage_switch)   printf '%b' 'usage: claude-acc switch <name|main>' ;;
+    sw_to_main)     printf '%b' 'Switched back to "main"' ;;
+    sw_to_main2)    printf '%b' ' (Keychain credential — full connectors).' ;;
+    sw_to_acc)      printf '%b' 'Switched to "%s"' ;;
+    sw_to_acc2)     printf '%b' ' (token).' ;;
+    sw_plain)       printf '%b' 'Note: the token sits in plain text in %s (mode 600).' ;;
+    sw_now)         printf '%b' 'In effect now — no Reload Window needed.' ;;
+    sw_now2)        printf '%b' 'Claude Code re-reads settings.json on EVERY request, so sessions' ;;
+    sw_now3)        printf '%b' 'already running (every window, every repo) move to this account too.' ;;
+    sw_pinned)      printf '%b' 'But NOT where you are standing:' ;;
+    sw_pinned2)     printf '%b' ' this spot pins account "%s"' ;;
+    sw_pinned3)     printf '%b' '  (a directory pin overrides the global one).' ;;
+    sw_fix1)        printf '%b' '  Move this spot too:  claude-acc switch %s --here' ;;
+    sw_fix2)        printf '%b' '  Drop its own pin  :  claude-acc switch off --here' ;;
+    sw_check)       printf '%b' 'Verifying with a real request…' ;;
+
+    err_one_acc)    printf '%b' 'expected exactly ONE account name (also got: "%s")' ;;
+    usage_here)     printf '%b' 'usage: claude-acc switch <name|main|off> --here [--at <dir>]\n       main = this repo uses the Keychain account · off = drop the pin' ;;
+    err_at_needs)   printf '%b' '--at needs a path' ;;
+    err_no_dir)     printf '%b' 'no such directory: %s' ;;
+    err_not_pinned) printf '%b' 'this directory has no pin: %s' ;;
+    here_unpin)     printf '%b' 'Pin removed from: %s' ;;
+    err_prefix)     printf '%b' 'error:' ;;
+    here_unpin2)    printf '%b' 'This directory now follows the global account (claude-acc switch).' ;;
+    here_main)      printf '%b' 'Pinned "main"' ;;
+    here_main2)     printf '%b' ' (Keychain) to: %s' ;;
+    here_acc)       printf '%b' 'Pinned "%s"' ;;
+    here_for)       printf '%b' ' to: %s' ;;
+    here_plain)     printf '%b' 'The token sits in plain text in %s (mode 600).' ;;
+    here_ws)        printf '%b' '  %s — every chat tab of this workspace runs there,' ;;
+    here_ws2)       printf '%b' '  so the pin covers the whole workspace, not one worktree.' ;;
+    here_diff)      printf '%b' '  (you are standing in %s — written to the directory above because' ;;
+    here_diff2)     printf '%b' '   repo settings only apply where claude runs, they do not cascade down.)' ;;
+    here_now)       printf '%b' 'In effect now' ;;
+    here_now2)      printf '%b' ' — no Reload Window, no new chat tab needed.' ;;
+    here_check)     printf '%b' 'Verifying with a real request from that directory…' ;;
+    here_ok)        printf '%b' 'account "%s" reached the API from that directory.' ;;
+    here_fail)      printf '%b' 'pinned, but the API could not be reached there:' ;;
+
+    usage_reassign) printf '%b' 'usage: claude-acc reassign <old-account> <new-account|main>' ;;
+    ra_skip)        printf '%b' '  skipped (directory is gone): %s' ;;
+    ra_none)        printf '%b' 'no directory is pinned to "%s".' ;;
+    ra_done)        printf '%b' 'Moved %s directories from "%s" to "%s".' ;;
+    ra_missing)     printf '%b' '(%s registered directories no longer exist — run `claude-acc sync` to tidy up.)' ;;
+    ra_now)         printf '%b' 'In effect now, including sessions already open in those directories.' ;;
+
+    sync_drop)      printf '%b' '  dropped from the registry (directory gone): %s' ;;
+    sync_lost)      printf '%b' '  skipped %s — no token for "%s" (run: claude-acc add %s)' ;;
+    sync_fix)       printf '%b' '  corrected: %s (%s -> %s)' ;;
+    sync_done)      printf '%b' 'Synced %s directories.' ;;
+    sync_fixn)      printf '%b' '(%s were out of step with the registry and have been rewritten.)' ;;
+    sync_gonen)     printf '%b' '(%s directories no longer exist and were dropped from the registry.)' ;;
+    lang_current)   printf '%b' 'Language: %s (%s)' ;;
+    lang_src_file)  printf '%b' 'your choice' ;;
+    lang_src_auto)  printf '%b' 'detected from the system LANG' ;;
+    lang_howto)     printf '%b' 'Change it: claude-acc lang vi | en | auto' ;;
+    lang_set)       printf '%b' 'Switched to: %s' ;;
+    lang_set_auto)  printf '%b' 'Manual choice cleared — following the system: %s' ;;
+    lang_bad)       printf '%b' 'expected one of: vi | en | auto' ;;
+    *)              printf '%s' "$1" ;;
+  esac
+}
+
+die()  { printf '%s%s%s %s\n' "$c_r" "$(t err_prefix)" "$c_0" "$*" >&2; exit 1; }
 info() { printf '%b\n' "$*" >&2; }
 
-[[ "$(uname -s)" == "Darwin" ]] || die "script nay chi chay tren macOS (dung \`security\` cua Keychain)."
-command -v claude >/dev/null 2>&1 || die "khong tim thay \`claude\` trong PATH."
+[[ "$(uname -s)" == "Darwin" ]] || die "$(t err_macos)"
+command -v claude >/dev/null 2>&1 || die "$(t err_no_claude)"
 
 mkdir -p "$CFG_DIR"
 touch "$LIST"
@@ -41,15 +231,15 @@ touch "$REPOS"
 # ---------- helpers -------------------------------------------------------
 
 valid_name() {
-  [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || die "ten acc chi duoc chua chu, so, . _ - (nhan duoc: '$1')"
-  [[ "$1" != "main" ]] || die "'main' la ten danh rieng cho acc dang nhap bang Keychain."
+  [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || die "$(tp err_bad_name "$1")"
+  [[ "$1" != "main" ]] || die "$(t err_main_res)"
 }
 
 known() { grep -qx -- "$1" "$LIST" 2>/dev/null; }
 
 token_of() {
   security find-generic-password -s "$SVC" -a "$1" -w 2>/dev/null \
-    || die "chua co token cho '$1'. Chay: claude-acc add $1"
+    || die "$(tp err_no_token "$1" "$1")"
 }
 
 remember() { known "$1" || printf '%s\n' "$1" >> "$LIST"; }
@@ -146,9 +336,7 @@ resolve_target() {
   dir="${line%%$'\t'*}"; note="${line#*$'\t'}"
 
   if [[ "$kind" == "AMBIG" ]]; then
-    die "thu muc nay nam trong NHIEU workspace khac nhau ($note).
-     Moi workspace chay claude o folder [0] cua no, nen khong doan duoc.
-     Chi dinh thang: claude-acc here <ten> --at <duong-dan-folder-0>"
+    die "$(tp err_ambig_ws "$note")"
   fi
   if [[ "$kind" == "WS" && -n "$dir" ]]; then
     printf '%s\t%s\n' "$dir" "$note"
@@ -191,10 +379,7 @@ guard_git() {
   git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || return 0
 
   if git -C "$dir" ls-files --error-unmatch "$rel" >/dev/null 2>&1; then
-    die "$rel cua repo nay DANG DUOC GIT THEO DOI — ghi token vao do la mot
-     buoc di thang toi viec commit nham token len remote.
-     Go theo doi truoc roi chay lai:
-       git -C $dir rm --cached $rel"
+    die "$(tp err_git_track "$rel" "$dir" "$rel")"
   fi
 
   git -C "$dir" check-ignore -q "$rel" 2>/dev/null && return 0
@@ -209,7 +394,7 @@ guard_git() {
   mkdir -p "$common/info"
   if ! grep -qxF "$rel" "$common/info/exclude" 2>/dev/null; then
     printf '%s\n' "$rel" >> "$common/info/exclude"
-    info "${c_dim}  (da them $rel vao .git/info/exclude — chi may nay, khong vao repo)${c_0}"
+    info "${c_dim}$(tp git_excluded "$rel")${c_0}"
   fi
 }
 
@@ -258,7 +443,7 @@ write_repo_pin() {
   local dir="$1" name="$2" tok="$3"
   mkdir -p "$dir/.claude"
   CLAUDE_ACC_TOK="$tok" python3 - "$(repo_file "$dir")" "$name" <<'PYEOF' \
-    || die "khong sua duoc $(repo_file "$dir") (file loi cu phap JSON?)"
+    || die "$(tp err_write_repo "$(repo_file "$dir")")"
 import json, os, sys
 p, name = sys.argv[1], sys.argv[2]
 tok = os.environ.get("CLAUDE_ACC_TOK", "")
@@ -296,7 +481,7 @@ probe() {
   local out
   if out="$(claude -p 'reply with exactly: OK' --model haiku 2>&1)"; then
     case "$out" in
-      *OK*) printf 'token hop le, goi duoc API\n'; return 0 ;;
+      *OK*) printf '%s\n' "$(t probe_ok)"; return 0 ;;
     esac
   fi
   printf '%s\n' "$(printf '%s' "$out" | head -3)"
@@ -333,7 +518,7 @@ run_setup_token_capture() {
     return $?
   fi
 
-  logf="$(mktemp -t claude-acc-typescript)" || die "khong tao duoc file tam."
+  logf="$(mktemp -t claude-acc-typescript)" || die "$(t err_tmpfile)"
   if [[ -n "$wrapper" ]]; then
     BROWSER="$wrapper" script -q "$logf" claude setup-token
   else
@@ -347,7 +532,7 @@ run_setup_token_capture() {
 
 mk_browser_wrapper() {
   local app="$1" f
-  f="$(mktemp -t claude-acc-browser)" || die "khong tao duoc file tam."
+  f="$(mktemp -t claude-acc-browser)" || die "$(t err_tmpfile)"
   # QUAN TRONG: wrapper KHONG duoc in bat cu thu gi ra terminal (stdout/stderr).
   # `claude setup-token` dung "alternate screen buffer" (giao dien toan man
   # hinh) trong luc cho duyet; wrapper ghi chu tu vao terminal NGAY LUC DO
@@ -538,7 +723,7 @@ EOF
 # ca nhung phien dang chay do o cua so/repo khac.
 cmd_switch() {
   local name="${1:-}"
-  [[ -n "$name" ]] || die "dung: claude-acc switch <ten-acc|main>"
+  [[ -n "$name" ]] || die "$(t usage_switch)"
 
   local tok=""
   if [[ "$name" != "main" ]]; then
@@ -574,17 +759,17 @@ with os.fdopen(fd,"w") as f:
     json.dump(d,f,indent=2,ensure_ascii=False); f.write("\n")
 os.replace(tmp,p)
 ' "$SETTINGS" "$name" \
-    || die "khong sua duoc $SETTINGS (file loi cu phap JSON?). Ban goc: $SETTINGS.bak-claude-acc"
+    || die "$(tp err_write_glob "$SETTINGS" "$SETTINGS.bak-claude-acc")"
 
   if [[ "$name" == "main" ]]; then
-    info "${c_g}Da chuyen ve 'main'${c_0} (credential Keychain — day du connectors)."
+    info "${c_g}$(t sw_to_main)${c_0}$(t sw_to_main2)"
   else
-    info "${c_g}Da chuyen sang '$name'${c_0} (token)."
-    info "${c_y}Luu y: token nam DANG VAN BAN trong $SETTINGS (quyen 600).${c_0}"
+    info "${c_g}$(tp sw_to_acc "$name")${c_0}$(t sw_to_acc2)"
+    info "${c_y}$(tp sw_plain "$SETTINGS")${c_0}"
   fi
-  info "${c_b}An ngay — KHONG can Reload Window.${c_0}"
-  info "${c_dim}CLI doc lai settings.json o TUNG request, nen ca nhung phien${c_0}"
-  info "${c_dim}dang chay (moi cua so, moi repo) cung doi sang acc nay ngay.${c_0}"
+  info "${c_b}$(t sw_now)${c_0}"
+  info "${c_dim}$(t sw_now2)${c_0}"
+  info "${c_dim}$(t sw_now3)${c_0}"
 
   # ... TRU nhung thu muc da ghim rieng: ghim cap repo de len ghim toan cuc.
   # Neu dung ngay trong mot cho nhu vay ma khong noi gi, nguoi dung se tuong
@@ -595,13 +780,13 @@ os.replace(tmp,p)
   [[ -z "$_gpin" && -n "$_gdir" && "$_gdir" != "$(pwd -P)" ]] && _gpin="$(repo_pin "$_gdir")"
   if [[ -n "$_gpin" && "$_gpin" != "$name" ]]; then
     info ""
-    info "${c_y}Nhung KHONG doi cho cho ban dang dung:${c_0} noi nay ghim rieng acc '$_gpin'"
-    info "${c_dim}  (ghim cap repo de len ghim toan cuc).${c_0}"
-    info "${c_dim}  Doi luon cho nay:  claude-acc switch $name --here${c_0}"
-    info "${c_dim}  Bo ghim rieng   :  claude-acc switch off --here${c_0}"
+    info "${c_y}$(t sw_pinned)${c_0}$(tp sw_pinned2 "$_gpin")"
+    info "${c_dim}$(t sw_pinned3)${c_0}"
+    info "${c_dim}$(tp sw_fix1 "$name")${c_0}"
+    info "${c_dim}$(t sw_fix2)${c_0}"
   fi
 
-  info "${c_dim}Kiem tra bang mot request that…${c_0}"
+  info "${c_dim}$(t sw_check)${c_0}"
   cmd_check "$name"
 }
 
@@ -611,20 +796,19 @@ cmd_here() {
   local name="" at="" check=1
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --at)  at="${2:-}"; [[ -n "$at" ]] || die "--at can mot duong dan"; shift 2 ;;
+      --at)  at="${2:-}"; [[ -n "$at" ]] || die "$(t err_at_needs)"; shift 2 ;;
       --at=*) at="${1#*=}"; shift ;;
       --no-check) check=0; shift ;;
       -*)    die "tuy chon khong biet: '$1'" ;;
-      *)     [[ -z "$name" ]] || die "chi nhan MOT ten acc (nhan duoc them: '$1')"
+      *)     [[ -z "$name" ]] || die "$(tp err_one_acc "$1")"
              name="$1"; shift ;;
     esac
   done
-  [[ -n "$name" ]] || die "dung: claude-acc switch <ten-acc|main|off> --here [--at <thu-muc>]
-       main = repo nay dung acc chinh (Keychain) · off = bo ghim rieng"
+  [[ -n "$name" ]] || die "$(t usage_here)"
 
   local dir note=""
   if [[ -n "$at" ]]; then
-    [[ -d "$at" ]] || die "khong thay thu muc: $at"
+    [[ -d "$at" ]] || die "$(tp err_no_dir "$at")"
     dir="$(cd "$at" && pwd -P)"
   else
     local line; line="$(resolve_target "$PWD")"
@@ -640,11 +824,11 @@ cmd_here() {
 
   if [[ "$name" == "off" ]]; then
     local cur; cur="$(repo_pin "$dir")"
-    [[ -n "$cur" ]] || die "thu muc nay chua ghim acc nao: $dir"
+    [[ -n "$cur" ]] || die "$(tp err_not_pinned "$dir")"
     write_repo_pin "$dir" off ""
     reg_del "$dir"
-    info "${c_g}Da bo ghim${c_0} cho: $dir"
-    info "${c_dim}Tu gio thu muc nay theo acc toan cuc (claude-acc switch).${c_0}"
+    info "${c_g}$(tp here_unpin "$dir")${c_0}"
+    info "${c_dim}$(t here_unpin2)${c_0}"
     return
   fi
 
@@ -653,29 +837,29 @@ cmd_here() {
   reg_set "$dir" "$name"
 
   if [[ "$name" == "main" ]]; then
-    info "${c_g}Da ghim 'main'${c_0} (Keychain) cho: $dir"
+    info "${c_g}$(t here_main)${c_0}$(tp here_main2 "$dir")"
   else
-    info "${c_g}Da ghim '$name'${c_0} cho: $dir"
-    info "${c_y}Token nam DANG VAN BAN trong $(repo_file "$dir") (quyen 600).${c_0}"
+    info "${c_g}$(tp here_acc "$name")${c_0}$(tp here_for "$dir")"
+    info "${c_y}$(tp here_plain "$(repo_file "$dir")")${c_0}"
   fi
-  [[ -n "$note" ]] && info "${c_dim}  $note — moi tab chat cua workspace nay deu chay o do,${c_0}" \
-                   && info "${c_dim}  nen ghim ap cho ca workspace, khong rieng mot worktree.${c_0}"
+  [[ -n "$note" ]] && info "${c_dim}$(tp here_ws "$note")${c_0}" \
+                   && info "${c_dim}$(t here_ws2)${c_0}"
 
   local here_now; here_now="$(cd "$PWD" && pwd -P)"
   if [[ "$here_now" != "$dir" ]]; then
-    info "${c_dim}  (ban dang dung o $here_now — ghi vao thu muc tren vi settings cap${c_0}"
-    info "${c_dim}   repo chi an o dung thu muc claude chay, khong ke thua xuong con.)${c_0}"
+    info "${c_dim}$(tp here_diff "$here_now")${c_0}"
+    info "${c_dim}$(t here_diff2)${c_0}"
   fi
 
-  info "${c_b}An ngay${c_0} — khong can Reload Window, khong can mo tab chat moi."
+  info "${c_b}$(t here_now)${c_0}$(t here_now2)"
   [[ "$check" == 1 ]] || return 0
-  info "${c_dim}Kiem tra bang mot request that o dung thu muc do…${c_0}"
+  info "${c_dim}$(t here_check)${c_0}"
   local out
   if out="$(cd "$dir" && env -u CLAUDE_CODE_OAUTH_TOKEN claude -p 'reply with exactly: OK' --model haiku 2>&1)" \
      && [[ "$out" == *OK* ]]; then
-    info "${c_g}✓ acc '$name' goi duoc API tai thu muc do.${c_0}"
+    info "${c_g}✓ $(tp here_ok "$name")${c_0}"
   else
-    info "${c_r}✗ ghim roi nhung KHONG goi duoc API tai do:${c_0}"
+    info "${c_r}✗ $(t here_fail)${c_0}"
     info "  $(printf '%s' "$out" | head -2)"
     return 1
   fi
@@ -685,7 +869,7 @@ cmd_here() {
 # acc gan cham limit va muon san tai sang acc khac.
 cmd_reassign() {
   local old="${1:-}" new="${2:-}"
-  [[ -n "$old" && -n "$new" ]] || die "dung: claude-acc reassign <acc-cu> <acc-moi|main>"
+  [[ -n "$old" && -n "$new" ]] || die "$(t usage_reassign)"
   local tok=""
   if [[ "$new" != "main" ]]; then valid_name "$new"; tok="$(token_of "$new")"; fi
 
@@ -694,7 +878,7 @@ cmd_reassign() {
     [[ -n "$dir" ]] || continue
     [[ "$acc" == "$old" ]] || continue
     if [[ ! -d "$dir" ]]; then
-      info "${c_y}  bo qua (thu muc khong con): $dir${c_0}"; missing=$((missing+1)); continue
+      info "${c_y}$(tp ra_skip "$dir")${c_0}"; missing=$((missing+1)); continue
     fi
     guard_git "$dir"
     write_repo_pin "$dir" "$new" "$tok"
@@ -703,10 +887,10 @@ cmd_reassign() {
     n=$((n+1))
   done < "$REPOS"
 
-  [[ $n -gt 0 ]] || die "khong co thu muc nao dang ghim '$old'."
-  info "${c_g}Da chuyen $n thu muc tu '$old' sang '$new'.${c_0}"
-  [[ $missing -gt 0 ]] && info "${c_dim}($missing thu muc trong so dang ky da khong con — chay \`claude-acc sync\` de don.)${c_0}"
-  info "${c_dim}An ngay cho ca cac phien dang mo o nhung thu muc do.${c_0}"
+  [[ $n -gt 0 ]] || die "$(tp ra_none "$old")"
+  info "${c_g}$(tp ra_done "$n" "$old" "$new")${c_0}"
+  [[ $missing -gt 0 ]] && info "${c_dim}$(tp ra_missing "$missing")${c_0}"
+  info "${c_dim}$(t ra_now)${c_0}"
 }
 
 # Ghi lai token hien tai vao moi thu muc da ghim. Dung sau khi `add` lai mot
@@ -716,25 +900,25 @@ cmd_sync() {
   while IFS=$'\t' read -r dir acc; do
     [[ -n "$dir" ]] || continue
     if [[ ! -d "$dir" ]]; then
-      info "${c_y}  don khoi so dang ky (thu muc khong con): $dir${c_0}"
+      info "${c_y}$(tp sync_drop "$dir")${c_0}"
       reg_del "$dir"; gone=$((gone+1)); continue
     fi
     local tok=""
     if [[ "$acc" != "main" ]]; then
       if ! tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)"; then
-        info "${c_r}  bo qua $dir — mat token cua '$acc' (chay: claude-acc add $acc)${c_0}"
+        info "${c_r}$(tp sync_lost "$dir" "$acc" "$acc")${c_0}"
         continue
       fi
     fi
     local before; before="$(repo_pin "$dir")"
     guard_git "$dir"
     write_repo_pin "$dir" "$acc" "$tok"
-    [[ "$before" == "$acc" ]] || { info "  sua lai: $dir ($before -> $acc)"; fixed=$((fixed+1)); }
+    [[ "$before" == "$acc" ]] || { info "$(tp sync_fix "$dir" "$before" "$acc")"; fixed=$((fixed+1)); }
     n=$((n+1))
   done < "$REPOS"
-  info "${c_g}Da dong bo $n thu muc.${c_0}"
-  [[ $fixed -gt 0 ]] && info "${c_dim}($fixed cho lech so voi so dang ky, da ghi lai.)${c_0}"
-  [[ $gone -gt 0 ]] && info "${c_dim}($gone thu muc khong con, da don khoi so dang ky.)${c_0}"
+  info "${c_g}$(tp sync_done "$n")${c_0}"
+  [[ $fixed -gt 0 ]] && info "${c_dim}$(tp sync_fixn "$fixed")${c_0}"
+  [[ $gone -gt 0 ]] && info "${c_dim}$(tp sync_gonen "$gone")${c_0}"
 }
 
 # Mo cua so 5h cho nhieu acc mot luc. Cua so chi bat dau tinh tu request DAU
@@ -789,7 +973,7 @@ cmd_warm() {
   [[ ${#accs[@]} -gt 0 ]] || die "khong co acc nao de trigger."
 
   local base
-  base="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-warm.XXXXXX")" || die "khong tao duoc thu muc tam."
+  base="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-warm.XXXXXX")" || die "$(t err_tmpdir)"
   chmod 700 "$base"
   # Token nam trong cac file duoi $base — don ca khi bi Ctrl+C.
   trap 'rm -rf "$base"' EXIT INT TERM
@@ -907,7 +1091,7 @@ cmd_usage() {
     done
   fi
 
-  local base; base="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-usage.XXXXXX")" || die "khong tao duoc thu muc tam."
+  local base; base="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-usage.XXXXXX")" || die "$(t err_tmpdir)"
   chmod 700 "$base"
   trap 'rm -rf "$base"' EXIT INT TERM
 
@@ -1004,6 +1188,31 @@ if len(best) > 1:
     print("  -> dung cho repo dang lam:  claude-acc switch %s --here%s" % (best[0][1], Z))
 PYEOF
   rm -rf "$base"; trap - EXIT INT TERM
+}
+
+cmd_lang() {
+  local want="${1:-}"
+  if [[ -z "$want" ]]; then
+    local src="tu LANG cua he thong"
+    [[ -s "$LANGFILE" ]] && src="$(t lang_src_file)"
+    [[ -s "$LANGFILE" ]] || src="$(t lang_src_auto)"
+    info "$(tp lang_current "$ACC_LANG" "$src")"
+    info "${c_dim}$(t lang_howto)${c_0}"
+    return
+  fi
+  case "$want" in
+    vi|en)
+      printf '%s\n' "$want" > "$LANGFILE"
+      ACC_LANG="$want"
+      info "${c_g}$(tp lang_set "$want")${c_0}"
+      ;;
+    auto)
+      rm -f "$LANGFILE"
+      ACC_LANG="$(acc_lang)"
+      info "${c_g}$(tp lang_set_auto "$ACC_LANG")${c_0}"
+      ;;
+    *) die "$(t lang_bad)" ;;
+  esac
 }
 
 cmd_login() {
@@ -1348,6 +1557,7 @@ case "${1:-help}" in
   here|pin)           shift; cmd_here "$@" ;;
   trigger|warm)       shift; cmd_warm "$@" ;;
   usage|quota)        shift; cmd_usage "$@" ;;
+  lang|language)      shift; cmd_lang "$@" ;;
   reassign)           shift; cmd_reassign "$@" ;;
   sync)               shift; cmd_sync "$@" ;;
   switch|use)
