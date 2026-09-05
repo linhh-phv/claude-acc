@@ -1566,7 +1566,6 @@ print(walk(d) or "")
     gpin="$(repo_pin "$gdir")"
     printf '%s%s%s  %s  %s(%s%s)%s\n' \
       "$c_b" "$(t ls_gui)" "$c_0" "${gpin:-${pin:-main}}" "$c_dim" "$gdir" "${gnote:+ — $gnote}" "$c_0"
-      "${gnote:+ — $gnote}" "$c_0"
   fi
   printf '\n'
 
