@@ -22,6 +22,7 @@ CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/claude-acc"
 LIST="$CFG_DIR/accounts"
 REPOS="$CFG_DIR/repos"
 LANGFILE="$CFG_DIR/lang"
+USAGECACHE="$CFG_DIR/usage-cache"
 # Cho phep tro sang file khac de kiem thu ma khong dung vao acc that dang
 # dung. Bo trong -> dung file that.
 SETTINGS="${CLAUDE_ACC_SETTINGS:-$HOME/.claude/settings.json}"
@@ -133,6 +134,9 @@ t_vi() {
     ls_sub_desc)    printf '%b' 'token — không có connectors' ;;
     ls_lost_tok)    printf '%b' 'mất token — chạy: claude-acc add %s' ;;
     ls_none)        printf '%b' 'chưa có acc phụ nào. Thêm bằng: claude-acc add <tên>' ;;
+    ls_ago)         printf '%b' '(đo %s trước)' ;;
+    ls_reset_done)  printf '%b' 'đã reset' ;;
+    ls_no_usage)    printf '%b' 'chưa có số liệu hạn mức — chạy: claude-acc usage' ;;
     ls_pins)        printf '%b' 'GHIM THEO THƯ MỤC' ;;
     ls_pins_hint)   printf '%b' 'claude-acc switch <tên> --here' ;;
     ls_dir_gone)    printf '%b' 'thư mục không còn — claude-acc sync' ;;
@@ -334,6 +338,9 @@ t_en() {
     ls_sub_desc)    printf '%b' 'token — no connectors' ;;
     ls_lost_tok)    printf '%b' 'token missing — run: claude-acc add %s' ;;
     ls_none)        printf '%b' 'no token accounts yet. Add one: claude-acc add <name>' ;;
+    ls_ago)         printf '%b' '(measured %s ago)' ;;
+    ls_reset_done)  printf '%b' 'reset' ;;
+    ls_no_usage)    printf '%b' 'no quota figures yet — run: claude-acc usage' ;;
     ls_pins)        printf '%b' 'DIRECTORY PINS' ;;
     ls_pins_hint)   printf '%b' 'claude-acc switch <name> --here' ;;
     ls_dir_gone)    printf '%b' 'directory is gone — claude-acc sync' ;;
@@ -1531,6 +1538,32 @@ cmd_usage() {
   T_LEFT="$(t usg_left)" T_DAYS="$(t usg_days)" T_DAYH="$(t usg_day_h)" \
   T_MOST="$(t usg_most)" T_MOST2="$(t usg_most2)" T_MOST3="$(t usg_most3)" \
   C_G="$c_g" C_R="$c_r" C_Y="$c_y" C_DIM="$c_dim" C_0="$c_0" \
+  # Ghi lai so lieu: `ls` se doc tu day. Neu `ls` tu goi API thi moi lan xem
+  # danh sach lai mo cua so 5h cua MOI acc — tac dung phu khong ai muon.
+  python3 - "$base" "$USAGECACHE" "${accs[@]}" <<'PYEOF2'
+import os, sys, time
+base, cache, names = sys.argv[1], sys.argv[2], sys.argv[3:]
+rows = {}
+if os.path.exists(cache):
+    for ln in open(cache, encoding="utf-8"):
+        f = ln.rstrip("\n").split("\t")
+        if len(f) >= 8:
+            rows[f[0]] = f
+now = int(time.time())
+for n in names:
+    try:
+        r = open(os.path.join(base, "res." + n)).read().strip().split("\t")
+    except Exception:
+        continue
+    if r and r[0] == "OK" and len(r) >= 7:
+        rows[n] = [n, str(now)] + r[1:7]
+fd = os.open(cache + ".t", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    for n in sorted(rows):
+        f.write("\t".join(rows[n]) + "\n")
+os.replace(cache + ".t", cache)
+PYEOF2
+
   python3 - "$base" "${accs[@]}" <<'PYEOF'
 import os, sys, time
 
@@ -1740,6 +1773,52 @@ cmd_rm() {
   info "${c_g}$(tp rm_done "$name")${c_0}"
 }
 
+# In ra tom tat han muc cua mot acc, lay tu lan `usage` gan nhat. Rong neu
+# chua co so lieu. Khong bao gio goi API — `ls` phai giu duoc tinh chat xem
+# la xem, khong gay tac dung phu.
+usage_cached() {
+  T_AGO="$(t ls_ago)" T_RESET="$(t ls_reset_done)" python3 - "$USAGECACHE" "$1" <<'PYEOF'
+import os, sys, time
+cache, acc = sys.argv[1], sys.argv[2]
+if not os.path.exists(cache):
+    sys.exit(0)
+row = None
+for ln in open(cache, encoding="utf-8"):
+    f = ln.rstrip("\n").split("\t")
+    if f and f[0] == acc and len(f) >= 8:
+        row = f
+        break
+if not row:
+    sys.exit(0)
+_, ts, u5, r5, s5, u7, r7, s7 = row[:8]
+now = int(time.time())
+try:
+    ts, r5i, r7i = int(ts), int(r5), int(r7)
+except Exception:
+    sys.exit(0)
+
+def pc(u, reset):
+    if now > reset:
+        return os.environ.get("T_RESET") or "reset"
+    try:
+        return "%d%%" % round(float(u) * 100)
+    except Exception:
+        return "?"
+
+age = now - ts
+if age < 90:
+    ago = "%ds" % age
+elif age < 5400:
+    ago = "%dm" % (age // 60)
+elif age < 172800:
+    ago = "%dh" % (age // 3600)
+else:
+    ago = "%dd" % (age // 86400)
+print("5h %-6s 7d %-6s %s" % (pc(u5, r5i), pc(u7, r7i),
+                              (os.environ.get("T_AGO") or "%s ago") % ago))
+PYEOF
+}
+
 cmd_ls() {
   local who
   who="$(env -u CLAUDE_CODE_OAUTH_TOKEN bash -c 'claude auth status --json 2>/dev/null' | python3 -c '
@@ -1796,8 +1875,9 @@ print(walk(d) or "")
     "$c_b" "$(t ls_here)" "$c_0" "${hp:-${pin:-main}}" "$c_dim" "$note_here" "$c_0"
   printf '\n'
 
-  printf '%smain%s  %s(%s)%s\n' \
-    "$c_b" "$c_0" "$c_dim" "$(t ls_main_desc)" "$c_0"
+  printf '%smain%s      %s%s%s\n' \
+    "$c_b" "$c_0" "$c_dim" "$(usage_cached main)" "$c_0"
+  printf '        %s(%s)%s\n' "$c_dim" "$(t ls_main_desc)" "$c_0"
   [[ -n "$who" ]] && printf '        %s%s%s\n' "$c_dim" "$who" "$c_0"
 
   if [[ -s "$LIST" ]]; then
@@ -1805,7 +1885,7 @@ print(walk(d) or "")
     while IFS= read -r a; do
       [[ -n "$a" ]] || continue
       if security find-generic-password -s "$SVC" -a "$a" -w >/dev/null 2>&1; then
-        printf '  %s✓%s %s\n' "$c_g" "$c_0" "$a"
+        printf '  %s✓%s %-10s %s%s%s\n' "$c_g" "$c_0" "$a" "$c_dim" "$(usage_cached "$a")" "$c_0"
       else
         printf '  %s✗%s %s %s(%s)%s\n' "$c_r" "$c_0" "$a" "$c_dim" "$(tp ls_lost_tok "$a")" "$c_0"
       fi
@@ -1813,6 +1893,10 @@ print(walk(d) or "")
   else
     printf '\n%s%s%s\n' "$c_dim" "$(t ls_none)" "$c_0"
   fi
+
+  # Chua tung chay `usage` thi cot han muc trong tron — noi ro cach lay,
+  # dung de nguoi dung tuong tinh nang hong.
+  [[ -s "$USAGECACHE" ]] || printf '  %s%s%s\n' "$c_dim" "$(t ls_no_usage)" "$c_0"
 
   if [[ -s "$REPOS" ]]; then
     printf '\n%s%s%s %s(%s)%s\n' "$c_b" "$(t ls_pins)" "$c_0" "$c_dim" "$(t ls_pins_hint)" "$c_0"
