@@ -123,6 +123,8 @@ t_vi() {
     ls_here_term)   printf '%b' 'chỉ khi bạn chạy claude từ terminal ở đây — GUI dùng dòng trên' ;;
     share_done)     printf '%b' 'đã cho %s folder khác của workspace dùng CHUNG ghim này (symlink — token chỉ nằm một chỗ)' ;;
     share_skip)     printf '%b' 'bỏ qua %s — thư mục này đã có settings.local.json riêng, không dám ghi đè' ;;
+    share_merged)   printf '%b' 'ghi ghim vào %s (thư mục này giữ cấu hình riêng nên không dùng chung file được)' ;;
+    share_merged_n) printf '%b' '(%s thư mục nhận ghim riêng vì có cấu hình riêng — vẫn đổi theo mỗi lần switch)' ;;
     share_skip_n)   printf '%b' '(%s thư mục bị bỏ qua; xem ở trên)' ;;
     ls_main_desc)   printf '%b' 'Keychain — đầy đủ connectors, Remote Control' ;;
     ls_sub)         printf '%b' 'acc phụ' ;;
@@ -324,6 +326,8 @@ t_en() {
     ls_here_term)   printf '%b' 'only if you run claude from a terminal here — the GUI uses the row above' ;;
     share_done)     printf '%b' '%s other workspace folders now SHARE this pin (symlink — the token lives in one place)' ;;
     share_skip)     printf '%b' 'skipped %s — it has its own settings.local.json, not overwriting it' ;;
+    share_merged)   printf '%b' 'wrote the pin into %s (it keeps its own config, so it cannot share the file)' ;;
+    share_merged_n) printf '%b' '(%s directories got their own pin because they keep their own config — still updated on every switch)' ;;
     share_skip_n)   printf '%b' '(%s directories skipped; see above)' ;;
     ls_main_desc)   printf '%b' 'Keychain — full connectors, Remote Control' ;;
     ls_sub)         printf '%b' 'token accounts' ;;
@@ -1150,8 +1154,42 @@ PYEOF
 # Symlink chu khong phai chep file: token chi nam o MOT cho, va doi acc mot
 # lan la ca workspace theo — khong con canh moi folder mot ban ghi roi lech
 # nhau luc nao khong hay.
+_real() { python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+
+# File nay CHI chua ghim cua claude-acc (khong co permissions/hooks/MCP...)?
+_only_pin() {
+  python3 - "$1" <<'PYEOF'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+if [k for k in d if k != "env"]:
+    sys.exit(1)
+env = d.get("env") or {}
+sys.exit(0 if all(k in ("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_ACC_NAME") for k in env) else 1)
+PYEOF
+}
+
+# Cap nhat cac folder CUNG workspace ma da co ghim rieng (file that) sang
+# acc moi. Khong tao them ghim moi — chi giu nhung cai da co khoi lech.
+sync_ws_members() {
+  local root="$1" name="$2" tok="$3" f n=0
+  while IFS= read -r f; do
+    [[ -n "$f" && "$f" != "$root" ]] || continue
+    local tf; tf="$(repo_file "$f")"
+    [[ -f "$tf" && ! -L "$tf" ]] || continue
+    [[ -n "$(repo_pin "$f")" ]] || continue
+    write_repo_pin "$f" "$name" "$tok"
+    reg_set "$f" "$name"
+    n=$((n+1))
+  done < <(ws_folders "$root")
+  [[ $n -gt 0 ]] && info "${c_dim}$(tp share_merged_n "$n")${c_0}"
+  return 0
+}
+
 share_workspace() {
-  local root="$1" src f target n=0 skipped=0
+  local root="$1" acc_name="$2" acc_tok="$3" src f target n=0 skipped=0 merged=0
   src="$(repo_file "$root")"
   [[ -f "$src" ]] || return 0
 
@@ -1159,11 +1197,21 @@ share_workspace() {
     [[ -n "$f" && "$f" != "$root" ]] || continue
     target="$(repo_file "$f")"
     if [[ -L "$target" ]]; then
-      [[ "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$target")" == "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$src")" ]] && continue
+      [[ "$(_real "$target")" == "$(_real "$src")" ]] && continue
     elif [[ -e "$target" ]]; then
-      # File that, co the dang giu permissions/MCP rieng — khong dam de len.
-      info "${c_y}$(tp share_skip "$f")${c_0}"
-      skipped=$((skipped+1)); continue
+      # File that. Neu no CHI chua ghim cua claude-acc thi thay bang symlink
+      # duoc — khong mat gi. Con neu no giu them permissions/hooks/MCP cua
+      # nguoi dung thi tuyet doi khong de len: ghi ghim VAO trong no (merge)
+      # va ghi so, de moi lan doi acc ve sau van cap nhat duoc.
+      if _only_pin "$target"; then
+        rm -f "$target"
+      else
+        guard_git "$f"
+        write_repo_pin "$f" "$acc_name" "$acc_tok"
+        reg_set "$f" "$acc_name"
+        info "${c_dim}$(tp share_merged "$f")${c_0}"
+        merged=$((merged+1)); continue
+      fi
     fi
     guard_git "$f"
     mkdir -p "$f/.claude"
@@ -1171,6 +1219,7 @@ share_workspace() {
   done < <(ws_folders "$root")
 
   [[ $n -gt 0 ]] && info "${c_g}$(tp share_done "$n")${c_0}"
+  [[ $merged -gt 0 ]] && info "${c_dim}$(tp share_merged_n "$merged")${c_0}"
   [[ $skipped -gt 0 ]] && info "${c_dim}$(tp share_skip_n "$skipped")${c_0}"
   return 0
 }
@@ -1239,7 +1288,11 @@ cmd_here() {
   fi
 
   if [[ "$share_all" == 1 ]]; then
-    share_workspace "$dir"
+    share_workspace "$dir" "$name" "$tok"
+  else
+    # Khong co --all: van cap nhat nhung folder cua workspace da duoc ghim
+    # tu truoc (file that co ghim). Symlink thi tu theo, khong can lam gi.
+    sync_ws_members "$dir" "$name" "$tok"
   fi
 
   info "${c_b}$(t here_now)${c_0}$(t here_now2)"

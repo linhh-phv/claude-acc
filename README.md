@@ -150,8 +150,16 @@ changing the account once moves the whole workspace:
 claude-acc switch other --here      # no --all needed; the links follow
 ```
 
-A folder that already has its own `settings.local.json` is skipped rather than
-overwritten — it may be holding permissions or MCP entries you want.
+What happens to each folder depends on what it already holds:
+
+| Folder holds | Result |
+|---|---|
+| nothing | symlink to folder `[0]` |
+| only an old pin | symlink (nothing is lost) |
+| its own `permissions` / `hooks` / MCP entries | keeps its file, gets the pin written **into** it — and is still updated on every later `switch --here` |
+
+So a folder with real configuration is never overwritten, and never left behind on a
+stale account either.
 
 ### Two things that will bite you if you don't know them
 
