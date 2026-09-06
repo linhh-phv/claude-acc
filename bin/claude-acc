@@ -117,6 +117,7 @@ t_vi() {
     ls_here)        printf '%b' 'TẠI ĐÂY ' ;;
     ls_gui)         printf '%b' 'GUI     ' ;;
     ls_pin_of)      printf '%b' 'ghim của %s' ;;
+    ls_shared_with) printf '%b' 'dùng chung ghim với %s' ;;
     ls_nopin)       printf '%b' 'không ghim riêng — theo toàn cục' ;;
     resync_done)    printf '%b' 'đã cập nhật token mới vào %s chỗ đang ghim acc này' ;;
     sync_global)    printf '%b' 'ghim toàn cục cũng đã nhận token mới' ;;
@@ -322,6 +323,7 @@ t_en() {
     ls_here)        printf '%b' 'HERE    ' ;;
     ls_gui)         printf '%b' 'GUI     ' ;;
     ls_pin_of)      printf '%b' 'pin of %s' ;;
+    ls_shared_with) printf '%b' 'shares the pin with %s' ;;
     ls_nopin)       printf '%b' 'no pin here — follows the global one' ;;
     resync_done)    printf '%b' 'wrote the new token into %s place(s) already pinned to this account' ;;
     sync_global)    printf '%b' 'the global pin got the new token too' ;;
@@ -1820,8 +1822,12 @@ print(walk(d) or "")
 
   # Chay claude o THU MUC NAY thi acc nao that su co hieu luc? Settings cap
   # repo chi an o dung thu muc chua .claude/, nen phai hoi theo tung thu muc.
-  local hp note_here; hp="$(repo_pin "$(pwd -P)")"
-  if [[ -n "$hp" ]]; then
+  local hp note_here _hf; hp="$(repo_pin "$(pwd -P)")"; _hf="$(repo_file "$(pwd -P)")"
+  if [[ -n "$hp" && -L "$_hf" ]]; then
+    # Thu muc nay dung CHUNG file ghim voi mot cho khac (symlink) — noi ro,
+    # dung de nguoi doc tuong day la mot ghim rieng cua rieng no.
+    note_here="$(tp ls_shared_with "$(dirname "$(dirname "$(_real "$_hf")")")")"
+  elif [[ -n "$hp" ]]; then
     note_here="$(tp ls_pin_of "$(pwd -P)")"
   elif [[ "$has_gui" == 1 ]]; then
     note_here="$(t ls_here_term)"
@@ -1899,6 +1905,10 @@ def ws_of(start):
     return None, []
 
 known = {os.path.realpath(d) for d, _ in rows}
+# Cho ban dang dung thuoc workspace nao? Dung de danh dau *: dung o mot
+# worktree ben trong workspace van la "dang o cho nay".
+cwd_root, _cwd_paths = ws_of(cwd)
+rcwd = os.path.realpath(cwd)
 shown = []
 members = set()
 for d, a in rows:
@@ -1909,7 +1919,9 @@ for d, a in rows:
 for d, a in rows:
     if os.path.realpath(d) in members:
         continue
-    mark = "*" if os.path.realpath(d) == os.path.realpath(cwd) else " "
+    rd = os.path.realpath(d)
+    here = (rd == rcwd) or (cwd_root is not None and rd == cwd_root)
+    mark = "*" if here else " "
     label = d.replace(home, "~", 1) if d.startswith(home) else d
     if not os.path.isdir(d):
         print("  %s %-8s %s %s(%s)%s" % (mark, a, label, D, T_GONE, Z))
