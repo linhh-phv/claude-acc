@@ -188,7 +188,7 @@ t_vi() {
     usg_days)       printf '%b' '%s ngày' ;;
     usg_day_h)      printf '%b' '1 ngày %sh' ;;
     usg_most)       printf '%b' 'Còn nhiều nhất:' ;;
-    usg_most2)      printf '%b' ' (5h mới dùng %s%%)' ;;
+    usg_most2)      printf '%b' ' (cửa sổ nặng nhất mới dùng %s%%)' ;;
     usg_most3)      printf '%b' '  -> dùng cho repo đang làm:  claude-acc switch %s --here' ;;
     usg_nocred)     printf '%b' 'không đọc được credential của main trong Keychain' ;;
     usg_expired)    printf '%b' 'HTTP %s — token không còn dùng được' ;;
@@ -394,7 +394,7 @@ t_en() {
     usg_days)       printf '%b' '%s days' ;;
     usg_day_h)      printf '%b' '1 day %sh' ;;
     usg_most)       printf '%b' 'Most headroom:' ;;
-    usg_most2)      printf '%b' ' (5h only %s%% used)' ;;
+    usg_most2)      printf '%b' ' (busiest window only %s%% used)' ;;
     usg_most3)      printf '%b' '  -> use it for the repo you are in:  claude-acc switch %s --here' ;;
     usg_nocred)     printf '%b' 'could not read the main credential from the Keychain' ;;
     usg_expired)    printf '%b' 'HTTP %s — token no longer usable' ;;
@@ -1670,12 +1670,13 @@ def pct(u):
     except Exception:
         return None
 
-def cell(u):
+def cell(u, colour=""):
     v = pct(u)
     if v is None:
         return "??????????   ?%"
     n = max(0, min(10, int(round(v * 10))))
-    return "%s %3d%%" % ("#" * n + "." * (10 - n), round(v * 100))
+    body = "%s %3d%%" % ("#" * n + "." * (10 - n), round(v * 100))
+    return "%s%s%s" % (colour, body, Z) if colour else body
 
 print("%s  %-10s %-30s %s%s" % (Y, E("T_ACC", "account"),
                                  E("T_5H", "5-hour window"), E("T_7D", "7-day window"), Z))
@@ -1687,18 +1688,48 @@ for name in names:
         print("  %s%-10s%s %s%s%s" % (R, name, Z, D, note, Z))
         continue
     u5, r5, s5, u7, r7, s7 = f[1], f[2], f[3], f[4], f[5], f[6]
-    ok = (s5 == "allowed" and s7 == "allowed")
-    if s5 != "allowed":
+
+    # API tra ve ba muc, khong phai hai: "allowed", "allowed_warning" (da
+    # vuot nguong canh bao nhung VAN GOI DUOC) va "rejected" (het that).
+    # Gop hai muc dau lai thanh "het" la bao sai: mot acc dung duoc bi hien
+    # la HET, va nguoi dung bo qua no oan.
+    def is_out(st):
+        return st == "rejected"
+
+    def is_warn(st):
+        return "warning" in st
+
+    out5, out7 = is_out(s5), is_out(s7)
+    warn5, warn7 = is_warn(s5), is_warn(s7)
+    ok = not (out5 or out7)
+
+    if out5:
         five = "%s%s%s  %s" % (R, E("T_OUT", "LIMIT REACHED"), Z,
                                E("T_BACK", "back at %s") % short(r5))
     else:
-        five = "%s  %s" % (cell(u5), short(r5))
-    seven = ("%s%s%s" % (R, E("T_SHORT", "OUT"), Z)) if s7 != "allowed" else "%3d%%  %s" % (
-        round((pct(u7) or 0) * 100), short(r7, with_date=True))
-    mark = "%s*%s" % (G, Z) if ok else "%s!%s" % (R, Z)
+        five = "%s  %s" % (cell(u5, Y if warn5 else ""), short(r5))
+
+    if out7:
+        seven = "%s%s%s  %s" % (R, E("T_SHORT", "OUT"), Z,
+                                E("T_BACK", "back at %s") % short(r7, with_date=True))
+    else:
+        p7 = "%3d%%" % round((pct(u7) or 0) * 100)
+        if warn7:
+            p7 = "%s%s%s" % (Y, p7, Z)
+        seven = "%s  %s" % (p7, short(r7, with_date=True))
+
+    if ok and not (warn5 or warn7):
+        mark = "%s*%s" % (G, Z)
+    elif ok:
+        mark = "%s*%s" % (Y, Z)
+    else:
+        mark = "%s!%s" % (R, Z)
     print(" %s %-10s %s %s" % (mark, name, pad_vis(five, 30), seven))
-    if ok and pct(u5) is not None:
-        best.append((pct(u5), name))
+    if ok:
+        # Xep theo cai NANG hon trong hai cua so: mot acc 5h con nhieu nhung
+        # 7 ngay sap cham tran khong phai la lua chon tot.
+        worst = max(pct(u5) or 0, pct(u7) or 0)
+        best.append((worst, name))
 
 if len(best) > 1:
     best.sort()
