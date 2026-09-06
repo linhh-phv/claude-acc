@@ -1413,27 +1413,32 @@ cmd_sync() {
 # goi trong mot thu muc tam co .claude/settings.local.json rieng — cap repo
 # de len cap user. Rieng 'main' dung token RONG: de len token thua ke roi
 # roi ve Keychain.
+# Mo cua so 5h = chi can MOT request that. Truoc day ham nay chay `claude -p`
+# trong mot thu muc tam, va do la mot lua chon rat dat: da do tren may that,
+# mot lan trigger ton 35.342 token (11k cache-create + 24k cache-read +
+# system prompt & tool definitions cua Claude Code) va ~$0.027 — trong khi
+# goi thang API het 9 token. Cung mot ket qua, gan 4000 lan chi phi.
 warm_one() {
-  local acc="$1" dir="$2" out_file="$3" tok="" out rc=0
-  mkdir -p "$dir/.claude"
-  if [[ "$acc" != "main" ]]; then
-    if ! tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)"; then
-      printf 'ERR\t%s\n' "$(tp warm_lost "$acc")" > "$out_file"
-      return
-    fi
-  fi
-  CLAUDE_ACC_TOK="$tok" python3 - "$dir/.claude/settings.local.json" <<'PYEOF'
-import json, os, sys
-fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-with os.fdopen(fd, "w") as f:
-    json.dump({"env": {"CLAUDE_CODE_OAUTH_TOKEN": os.environ.get("CLAUDE_ACC_TOK", "")}}, f)
-PYEOF
-  out="$(cd "$dir" && env -u CLAUDE_CODE_OAUTH_TOKEN claude -p 'Reply with exactly: OK' \
-         --model haiku 2>&1 </dev/null)" || rc=1
-  if [[ $rc -eq 0 && "$out" == *OK* ]]; then
-    printf 'OK\t\n' > "$out_file"
+  local acc="$1" out_file="$2" tok="" out
+  if [[ "$acc" == "main" ]]; then
+    tok="$(main_access_token)" || { printf 'ERR\t%s\n' "$(t usg_nocred)" > "$out_file"; return; }
   else
-    printf 'ERR\t%s\n' "$(printf '%s' "$out" | head -1)" > "$out_file"
+    tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)" \
+      || { printf 'ERR\t%s\n' "$(tp warm_lost "$acc")" > "$out_file"; return; }
+  fi
+
+  if out="$(probe_token_api "$tok")"; then
+    printf 'OK\t\n' > "$out_file"
+  elif [[ "$acc" == "main" ]]; then
+    refresh_main_token
+    tok="$(main_access_token 2>/dev/null || true)"
+    if [[ -n "$tok" ]] && out="$(probe_token_api "$tok")"; then
+      printf 'OK\t\n' > "$out_file"
+    else
+      printf 'ERR\t%s\n' "$out" > "$out_file"
+    fi
+  else
+    printf 'ERR\t%s\n' "$out" > "$out_file"
   fi
 }
 
@@ -1458,12 +1463,11 @@ cmd_warm() {
   local base
   base="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-warm.XXXXXX")" || die "$(t err_tmpdir)"
   chmod 700 "$base"
-  # Token nam trong cac file duoi $base — don ca khi bi Ctrl+C.
   trap 'rm -rf "$base"' EXIT INT TERM
 
   info "${c_dim}$(tp warm_running "${#accs[@]}")${c_0}"
   for a in "${accs[@]}"; do
-    warm_one "$a" "$base/$a" "$base/res.$a" &
+    warm_one "$a" "$base/res.$a" &
   done
   wait
 
