@@ -121,6 +121,9 @@ t_vi() {
     resync_done)    printf '%b' 'đã cập nhật token mới vào %s chỗ đang ghim acc này' ;;
     sync_global)    printf '%b' 'ghim toàn cục cũng đã nhận token mới' ;;
     ls_here_term)   printf '%b' 'chỉ khi bạn chạy claude từ terminal ở đây — GUI dùng dòng trên' ;;
+    share_done)     printf '%b' 'đã cho %s folder khác của workspace dùng CHUNG ghim này (symlink — token chỉ nằm một chỗ)' ;;
+    share_skip)     printf '%b' 'bỏ qua %s — thư mục này đã có settings.local.json riêng, không dám ghi đè' ;;
+    share_skip_n)   printf '%b' '(%s thư mục bị bỏ qua; xem ở trên)' ;;
     ls_main_desc)   printf '%b' 'Keychain — đầy đủ connectors, Remote Control' ;;
     ls_sub)         printf '%b' 'acc phụ' ;;
     ls_sub_desc)    printf '%b' 'token — không có connectors' ;;
@@ -319,6 +322,9 @@ t_en() {
     resync_done)    printf '%b' 'wrote the new token into %s place(s) already pinned to this account' ;;
     sync_global)    printf '%b' 'the global pin got the new token too' ;;
     ls_here_term)   printf '%b' 'only if you run claude from a terminal here — the GUI uses the row above' ;;
+    share_done)     printf '%b' '%s other workspace folders now SHARE this pin (symlink — the token lives in one place)' ;;
+    share_skip)     printf '%b' 'skipped %s — it has its own settings.local.json, not overwriting it' ;;
+    share_skip_n)   printf '%b' '(%s directories skipped; see above)' ;;
     ls_main_desc)   printf '%b' 'Keychain — full connectors, Remote Control' ;;
     ls_sub)         printf '%b' 'token accounts' ;;
     ls_sub_desc)    printf '%b' 'token — no connectors' ;;
@@ -563,6 +569,38 @@ PYEOF
 
 # Thu muc dich de ghim, tinh tu thu muc hien tai.
 # stdout: <dir>\t<ghi-chu>   (ghi-chu rong neu la repo thuong)
+# In ra moi folder cua workspace chua thu muc nay, moi dong mot duong dan
+# (folder [0] dau tien). Rong neu khong thuoc workspace nao.
+ws_folders() {
+  python3 - "$1" <<'PYEOF'
+import json, os, re, sys, glob
+start = os.path.realpath(sys.argv[1])
+d = start
+for _ in range(6):
+    parent = os.path.dirname(d)
+    if parent == d:
+        break
+    for ws in sorted(glob.glob(os.path.join(parent, "*.code-workspace"))):
+        try:
+            raw = open(ws, encoding="utf-8").read()
+            try:
+                data = json.loads(raw)
+            except Exception:
+                data = json.loads(re.sub(r"^\s*//.*$", "", raw, flags=re.M))
+        except Exception:
+            continue
+        base = os.path.dirname(ws)
+        paths = [os.path.realpath(os.path.join(base, f["path"]))
+                 for f in (data.get("folders") or []) if f.get("path")]
+        if any(start == q or start.startswith(q + os.sep) for q in paths):
+            for q in paths:
+                if os.path.isdir(q):
+                    print(q)
+            sys.exit(0)
+    d = parent
+PYEOF
+}
+
 resolve_target() {
   local base="${1:-$PWD}" line kind dir note
   line="$(gui_root "$base")"
@@ -700,11 +738,15 @@ if not d:
     if os.path.exists(p):
         os.remove(p)
     sys.exit(0)
-fd = os.open(p + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+# Neu p la SYMLINK (thu muc nay dung chung ghim voi cho khac), ghi vao FILE
+# DICH. os.replace len chinh symlink se thay no bang mot file thuong, tuc la
+# am tham cat dut lien ket ma nguoi dung tuong van con.
+target = os.path.realpath(p) if os.path.islink(p) else p
+fd = os.open(target + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
 with os.fdopen(fd, "w", encoding="utf-8") as f:
     json.dump(d, f, indent=2, ensure_ascii=False)
     f.write("\n")
-os.replace(p + ".tmp", p)
+os.replace(target + ".tmp", target)
 PYEOF
 }
 
@@ -1101,13 +1143,46 @@ except Exception as e:
 PYEOF
 }
 
+# Cho MOI folder khac cua workspace dung CHUNG file ghim cua folder [0],
+# bang symlink. Da do: Claude Code doc xuyen symlink (dat token rac o file
+# goc -> chay tu folder chi co symlink van 401).
+#
+# Symlink chu khong phai chep file: token chi nam o MOT cho, va doi acc mot
+# lan la ca workspace theo — khong con canh moi folder mot ban ghi roi lech
+# nhau luc nao khong hay.
+share_workspace() {
+  local root="$1" src f target n=0 skipped=0
+  src="$(repo_file "$root")"
+  [[ -f "$src" ]] || return 0
+
+  while IFS= read -r f; do
+    [[ -n "$f" && "$f" != "$root" ]] || continue
+    target="$(repo_file "$f")"
+    if [[ -L "$target" ]]; then
+      [[ "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$target")" == "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$src")" ]] && continue
+    elif [[ -e "$target" ]]; then
+      # File that, co the dang giu permissions/MCP rieng — khong dam de len.
+      info "${c_y}$(tp share_skip "$f")${c_0}"
+      skipped=$((skipped+1)); continue
+    fi
+    guard_git "$f"
+    mkdir -p "$f/.claude"
+    ln -sfn "$src" "$target" && n=$((n+1))
+  done < <(ws_folders "$root")
+
+  [[ $n -gt 0 ]] && info "${c_g}$(tp share_done "$n")${c_0}"
+  [[ $skipped -gt 0 ]] && info "${c_dim}$(tp share_skip_n "$skipped")${c_0}"
+  return 0
+}
+
 cmd_here() {
-  local name="" at="" check=1
+  local name="" at="" check=1 share_all=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --at)  at="${2:-}"; [[ -n "$at" ]] || die "$(t err_at_needs)"; shift 2 ;;
       --at=*) at="${1#*=}"; shift ;;
       --no-check) check=0; shift ;;
+      --all)      share_all=1; shift ;;
       -*)    die "$(tp err_unknown "$1")" ;;
       *)     [[ -z "$name" ]] || die "$(tp err_one_acc "$1")"
              name="$1"; shift ;;
@@ -1161,6 +1236,10 @@ cmd_here() {
   if [[ "$here_now" != "$dir" ]]; then
     info "${c_dim}$(tp here_diff "$here_now")${c_0}"
     info "${c_dim}$(t here_diff2)${c_0}"
+  fi
+
+  if [[ "$share_all" == 1 ]]; then
+    share_workspace "$dir"
   fi
 
   info "${c_b}$(t here_now)${c_0}$(t here_now2)"
@@ -1860,6 +1939,8 @@ ${c_b}LỆNH${c_0}
                          \`off\` = bỏ ghim riêng, quay về theo acc toàn cục.
       --at <thư-mục>       ghim cho thư mục khác thay vì thư mục hiện tại
       --no-check           bỏ qua bước gọi thử API sau khi ghim
+      --all                cho MỌI folder của workspace dùng chung ghim này
+                           (symlink; token vẫn chỉ nằm ở một chỗ duy nhất)
   trigger [tên...]       Mở cửa sổ 5h cho các acc (mặc định: TẤT CẢ, kể cả main)
                          bằng một request nhỏ, chạy song song. Nêu tên acc để
                          chỉ trigger đúng những acc đó.
@@ -1940,6 +2021,8 @@ ${c_b}COMMANDS${c_0}
                          whole load. \`off\` drops the pin and follows the global one.
       --at <dir>           pin another directory instead of the current one
       --no-check           skip the verifying API call after pinning
+      --all                make EVERY folder of the workspace share this pin
+                           (symlink; the token still lives in one place only)
   trigger [name...]      Start the 5-hour window for accounts (default: ALL of them,
                          main included) with one small request each, in parallel.
                          Name accounts to start only those.

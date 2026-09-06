@@ -132,6 +132,27 @@ claude-acc sync                          # rewrite tokens everywhere (after re-a
 claude-acc ls                            # who's pinned where, and what's in effect here
 ```
 
+### Making a whole workspace share one pin
+
+In a multi-root workspace only folder `[0]` matters to the GUI, but a terminal opened in
+another folder ignores that pin. If you want the whole workspace to behave as one unit:
+
+```bash
+claude-acc switch work --here --all
+```
+
+Folder `[0]` gets the real file; every other folder gets a **symlink** to it. Measured:
+Claude Code reads through symlinks — put a bad token in the real file and a run from a
+folder that only has the link still 401s. So the token lives in exactly one place, and
+changing the account once moves the whole workspace:
+
+```bash
+claude-acc switch other --here      # no --all needed; the links follow
+```
+
+A folder that already has its own `settings.local.json` is skipped rather than
+overwritten — it may be holding permissions or MCP entries you want.
+
 ### Two things that will bite you if you don't know them
 
 Both measured on this machine, not inferred from docs.
