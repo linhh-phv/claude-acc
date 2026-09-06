@@ -75,8 +75,7 @@ claude-acc switch personal --here   # only this repo; the global account is unto
 | Stop pinning this repo | `claude-acc switch off --here` |
 | Who is being used, and where? | `claude-acc ls` |
 | Read everything in Vietnamese | `claude-acc lang vi` |
-| Start every account's 5-hour window | `claude-acc trigger` |
-| See how much each account has left | `claude-acc usage` |
+| See how much each account has left (and start its 5h window) | `claude-acc usage` |
 
 Everything takes effect on the next request — no reload, no restart, no new chat tab.
 
@@ -195,39 +194,6 @@ it is not an option. `claude-acc` therefore:
 `main` is the exception: pinning `main` writes an empty token, which overrides the
 global one and falls back to the Keychain. No secret is written at all.
 
-## Starting the 5-hour windows
-
-Claude's usage window only starts counting from an account's **first** request, so an
-account you haven't touched isn't running its clock. Kicking each one off by hand — switch,
-send something, switch again — gets tedious once you have a few accounts. One command
-does all of them, in parallel:
-
-```bash
-claude-acc trigger                  # every account, main included
-claude-acc trigger work personal    # only these two — leave the others alone
-```
-
-Each account gets one request straight to the API — `{"model": "claude-haiku-4-5",
-"max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}`. Measured: **9 tokens**
-(8 in, 1 out) per account, and the whole thing finishes in about a second.
-
-That matters more than it sounds. Doing the same through `claude -p` costs **35,342
-tokens** and about **$0.027 per account** — Claude Code's system prompt and tool
-definitions ride along (11k cache-create + 24k cache-read) just to prove a token works.
-`usage` reports the same numbers for the same 9 tokens, because rate-limit headers come
-back on any response.
-
-Naming accounts explicitly is how you skip the ones you don't want started (a work
-account you'd rather not put on the clock yet). A name you don't have is an error rather
-than a silent skip, so a typo can't quietly trigger an account you meant to leave out.
-
-Under the hood it can't just set `CLAUDE_CODE_OAUTH_TOKEN` and call `claude` — the `env`
-block in `~/.claude/settings.json` overrides the environment. So each account is called
-inside its own temporary directory carrying a `.claude/settings.local.json`, which
-outranks the user-level file; `main` uses the empty-token trick to fall back to the
-Keychain. Those directories are `700`, the files `600`, and they're removed on the way
-out, including on Ctrl+C.
-
 ## Seeing how much each account has left
 
 Claude Code has no CLI command for this — `/usage` only exists inside a session — but the
@@ -237,6 +203,10 @@ API reports it in response headers, so `claude-acc` asks for it directly:
 claude-acc usage                 # every account, main included
 claude-acc usage work personal   # only these two
 ```
+
+It also doubles as the way to **start the 5-hour windows**. That window only begins
+counting from an account's first request, so an account you have not touched is not
+running its clock — and asking is itself a request.
 
 ```
   account    5-hour window                  7-day window
@@ -280,8 +250,7 @@ That's why `claude-acc ls` can show an email for `main` but not for token accoun
 | `switch <name\|main\|off> --here` | Pin an account to the current repo/workspace, independent of the global one. `--at <dir>` targets another directory, `--no-check` skips the verifying API call. Also spelled `here <name>`. |
 | `reassign <old> <new>` | Move every pinned directory from one account to another — for when `<old>` is near its limit. |
 | `sync` | Rewrite the token in every pinned directory (after re-adding an account), and drop directories that no longer exist. |
-| `usage [name...]` | Show 5h / 7d utilization and reset times per account, and suggest the one with most headroom. Costs (and therefore starts) one request per account. Also spelled `quota`. |
-| `trigger [name...]` | Start the 5-hour usage window for the named accounts, or for all of them (including `main`) when given none. Runs them in parallel. Also spelled `warm`. |
+| `usage [name...]` | Show 5h / 7d utilization and reset times per account, and suggest the one with most headroom. Costs one request per account (9 tokens), which also starts that account's 5-hour window. Also spelled `quota`, `trigger`, `warm`. |
 | `lang [vi\|en\|auto]` | Show or change the language of every message, `help` included. Defaults to the system `LANG`, falling back to English. |
 | `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. |
 | `check <name\|main>` | Verify an account's credential still works, with a real API call — not just a config read. |

@@ -169,12 +169,7 @@ t_vi() {
     err_only_names) printf '%b' 'lệnh này chỉ nhận tên acc. Ví dụ: claude-acc %s cong-viec ca-nhan' ;;
     err_unknown_acc) printf '%b' 'không biết acc "%s". Xem danh sách: claude-acc ls' ;;
     err_no_accs)    printf '%b' 'không có acc nào để chạy.' ;;
-    warm_running)   printf '%b' 'Gọi một request nhỏ cho %s acc (song song)…' ;;
-    warm_opened)    printf '%b' 'đã mở cửa sổ 5h' ;;
     warm_lost)      printf '%b' 'mất token — chạy: claude-acc add %s' ;;
-    warm_noresult)  printf '%b' 'không có kết quả' ;;
-    warm_all_ok)    printf '%b' 'Xong: %s/%s acc.' ;;
-    warm_some)      printf '%b' 'Xong: %s được, %s lỗi.' ;;
 
     usg_running)    printf '%b' 'Hỏi hạn mức của %s acc (song song)…' ;;
     usg_warn)       printf '%b' 'Lưu ý: việc hỏi là một request thật, nên nó CŨNG mở cửa sổ 5h của acc đó.' ;;
@@ -375,12 +370,7 @@ t_en() {
     err_only_names) printf '%b' 'this command only takes account names. Example: claude-acc %s work personal' ;;
     err_unknown_acc) printf '%b' 'unknown account "%s". See the list: claude-acc ls' ;;
     err_no_accs)    printf '%b' 'no accounts to run.' ;;
-    warm_running)   printf '%b' 'Sending one small request for %s accounts (in parallel)…' ;;
-    warm_opened)    printf '%b' '5-hour window started' ;;
     warm_lost)      printf '%b' 'token missing — run: claude-acc add %s' ;;
-    warm_noresult)  printf '%b' 'no result' ;;
-    warm_all_ok)    printf '%b' 'Done: %s/%s accounts.' ;;
-    warm_some)      printf '%b' 'Done: %s ok, %s failed.' ;;
 
     usg_running)    printf '%b' 'Asking %s accounts for their limits (in parallel)…' ;;
     usg_warn)       printf '%b' 'Note: asking IS a real request, so it also starts the 5-hour window for that account.' ;;
@@ -1413,85 +1403,6 @@ cmd_sync() {
 # goi trong mot thu muc tam co .claude/settings.local.json rieng — cap repo
 # de len cap user. Rieng 'main' dung token RONG: de len token thua ke roi
 # roi ve Keychain.
-# Mo cua so 5h = chi can MOT request that. Truoc day ham nay chay `claude -p`
-# trong mot thu muc tam, va do la mot lua chon rat dat: da do tren may that,
-# mot lan trigger ton 35.342 token (11k cache-create + 24k cache-read +
-# system prompt & tool definitions cua Claude Code) va ~$0.027 — trong khi
-# goi thang API het 9 token. Cung mot ket qua, gan 4000 lan chi phi.
-warm_one() {
-  local acc="$1" out_file="$2" tok="" out
-  if [[ "$acc" == "main" ]]; then
-    tok="$(main_access_token)" || { printf 'ERR\t%s\n' "$(t usg_nocred)" > "$out_file"; return; }
-  else
-    tok="$(security find-generic-password -s "$SVC" -a "$acc" -w 2>/dev/null)" \
-      || { printf 'ERR\t%s\n' "$(tp warm_lost "$acc")" > "$out_file"; return; }
-  fi
-
-  if out="$(probe_token_api "$tok")"; then
-    printf 'OK\t\n' > "$out_file"
-  elif [[ "$acc" == "main" ]]; then
-    refresh_main_token
-    tok="$(main_access_token 2>/dev/null || true)"
-    if [[ -n "$tok" ]] && out="$(probe_token_api "$tok")"; then
-      printf 'OK\t\n' > "$out_file"
-    else
-      printf 'ERR\t%s\n' "$out" > "$out_file"
-    fi
-  else
-    printf 'ERR\t%s\n' "$out" > "$out_file"
-  fi
-}
-
-cmd_warm() {
-  local accs=() a
-  if [[ $# -eq 0 ]]; then
-    accs+=("main")
-    while IFS= read -r a; do [[ -n "$a" ]] && accs+=("$a"); done < "$LIST"
-  else
-    for a in "$@"; do
-      case "$a" in
-        -*) die "$(tp err_only_names trigger)" ;;
-        main) ;;
-        *)  valid_name "$a"
-            known "$a" || die "$(tp err_unknown_acc "$a")" ;;
-      esac
-      accs+=("$a")
-    done
-  fi
-  [[ ${#accs[@]} -gt 0 ]] || die "$(t err_no_accs)"
-
-  local base
-  base="$(mktemp -d "${TMPDIR:-/tmp}/claude-acc-warm.XXXXXX")" || die "$(t err_tmpdir)"
-  chmod 700 "$base"
-  trap 'rm -rf "$base"' EXIT INT TERM
-
-  info "${c_dim}$(tp warm_running "${#accs[@]}")${c_0}"
-  for a in "${accs[@]}"; do
-    warm_one "$a" "$base/res.$a" &
-  done
-  wait
-
-  local ok=0 bad=0 line st msg
-  for a in "${accs[@]}"; do
-    line="$(cat "$base/res.$a" 2>/dev/null || printf 'ERR\t%s\n' "$(t warm_noresult)")"
-    st="${line%%$'\t'*}"; msg="${line#*$'\t'}"
-    if [[ "$st" == "OK" ]]; then
-      printf '  %s✓%s %-10s %s%s%s\n' "$c_g" "$c_0" "$a" "$c_dim" "$(t warm_opened)" "$c_0"
-      ok=$((ok+1))
-    else
-      printf '  %s✗%s %-10s %s\n' "$c_r" "$c_0" "$a" "$msg"
-      bad=$((bad+1))
-    fi
-  done
-  rm -rf "$base"; trap - EXIT INT TERM
-  info ""
-  if [[ $bad -eq 0 ]]; then
-    info "${c_g}$(tp warm_all_ok "$ok" "$ok")${c_0}"
-  else
-    info "${c_y}$(tp warm_some "$ok" "$bad")${c_0}"
-    return 1
-  fi
-}
 
 # Access token cua acc 'main' nam trong credential rieng cua Claude Code
 # (service "Claude Code-credentials"), khong phai trong kho token cua
@@ -2136,12 +2047,10 @@ ${c_b}LỆNH${c_0}
       --no-check           bỏ qua bước gọi thử API sau khi ghim
       --all                cho MỌI folder của workspace dùng chung ghim này
                            (symlink; token vẫn chỉ nằm ở một chỗ duy nhất)
-  trigger [tên...]       Mở cửa sổ 5h cho các acc (mặc định: TẤT CẢ, kể cả main)
-                         bằng một request nhỏ, chạy song song. Nêu tên acc để
-                         chỉ trigger đúng những acc đó.
   usage [tên...]         Xem đã tiêu bao nhiêu % cửa sổ 5h / 7 ngày và bao giờ
                          reset, cho từng acc (mặc định: TẤT CẢ). Chính việc hỏi
-                         cũng là một request nên CŨNG mở cửa sổ 5h của acc đó.
+                         là một request (9 token) nên CŨNG mở cửa sổ 5h của acc
+                         đó — dùng luôn thay cho việc "trigger" cho sớm chạy giờ.
   reassign <cũ> <mới>    Chuyển MỌI thư mục đang ghim <cũ> sang <mới>
   sync                   Ghi lại token cho mọi thư mục đã ghim (sau khi \`add\`
                          lại một acc, hoặc khi nghi file trong repo bị sửa)
@@ -2169,9 +2078,8 @@ ${c_b}BẮT ĐẦU NHANH${c_0}
   claude-acc switch off --here                   # bỏ ghim riêng của repo
   claude-acc reassign ca-nhan acc-2           # acc-1 gần hết limit -> san tải
 
-  claude-acc usage                            # acc nào còn nhiều hạn mức nhất
-  claude-acc trigger                          # mở cửa sổ 5h cho TẤT CẢ acc
-  claude-acc trigger ca-nhan acc-2            # chỉ 2 acc này (bỏ qua acc công ty)
+  claude-acc usage                            # acc nào còn hạn mức + mở cửa sổ 5h
+  claude-acc usage ca-nhan acc-2              # chỉ 2 acc này (bỏ qua acc công ty)
 
 ${c_b}GHIM THEO THƯ MỤC — hai điều PHẢI biết (đều đã đo, không phải suy đoán)${c_0}
   - Settings cấp repo chỉ ăn khi \`claude\` chạy ĐÚNG ở thư mục chứa .claude/.
@@ -2218,12 +2126,10 @@ ${c_b}COMMANDS${c_0}
       --no-check           skip the verifying API call after pinning
       --all                make EVERY folder of the workspace share this pin
                            (symlink; the token still lives in one place only)
-  trigger [name...]      Start the 5-hour window for accounts (default: ALL of them,
-                         main included) with one small request each, in parallel.
-                         Name accounts to start only those.
   usage [name...]        Show how much of the 5h / 7d window each account has used
                          and when it resets (default: ALL). Asking is itself a
-                         request, so it ALSO starts that window.
+                         request (9 tokens), so it ALSO starts that window — use
+                         it when you want the clock started early.
   reassign <old> <new>   Move EVERY directory pinned to <old> over to <new>
   sync                   Rewrite the token in every pinned directory (after adding
                          an account again, or if a repo file looks edited)
@@ -2251,9 +2157,8 @@ ${c_b}QUICK START${c_0}
   claude-acc switch off --here                   # drop this repo's pin
   claude-acc reassign work other               # work is near its limit -> spread out
 
-  claude-acc usage                            # which account has the most headroom
-  claude-acc trigger                          # start the 5-hour window on ALL accounts
-  claude-acc trigger work other               # only these two
+  claude-acc usage                            # headroom, and starts the 5-hour window
+  claude-acc usage work other                 # only these two
 
 ${c_b}DIRECTORY PINS — two things you MUST know (both measured, not assumed)${c_0}
   - Repo-level settings only apply when \`claude\` runs in the exact directory
@@ -2286,8 +2191,9 @@ EOF
 case "${1:-help}" in
   add)                shift; cmd_add "$@" ;;
   here|pin)           shift; cmd_here "$@" ;;
-  trigger|warm)       shift; cmd_warm "$@" ;;
-  usage|quota)        shift; cmd_usage "$@" ;;
+  # `trigger`/`warm` tung la lenh rieng, nhung no chi lam dung mot viec ma
+  # `usage` da lam: goi mot request de mo cua so 5h. Giu lai lam bi danh.
+  usage|quota|trigger|warm) shift; cmd_usage "$@" ;;
   lang|language)      shift; cmd_lang "$@" ;;
   reassign)           shift; cmd_reassign "$@" ;;
   sync)               shift; cmd_sync "$@" ;;
