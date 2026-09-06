@@ -207,10 +207,19 @@ claude-acc trigger                  # every account, main included
 claude-acc trigger work personal    # only these two — leave the others alone
 ```
 
-Each account gets one cheap Haiku request. Naming accounts explicitly is how you skip
-the ones you don't want started (a work account you'd rather not put on the clock yet).
-A name you don't have is an error rather than a silent skip, so a typo can't quietly
-trigger an account you meant to leave out.
+Each account gets one request straight to the API — `{"model": "claude-haiku-4-5",
+"max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}`. Measured: **9 tokens**
+(8 in, 1 out) per account, and the whole thing finishes in about a second.
+
+That matters more than it sounds. Doing the same through `claude -p` costs **35,342
+tokens** and about **$0.027 per account** — Claude Code's system prompt and tool
+definitions ride along (11k cache-create + 24k cache-read) just to prove a token works.
+`usage` reports the same numbers for the same 9 tokens, because rate-limit headers come
+back on any response.
+
+Naming accounts explicitly is how you skip the ones you don't want started (a work
+account you'd rather not put on the clock yet). A name you don't have is an error rather
+than a silent skip, so a typo can't quietly trigger an account you meant to leave out.
 
 Under the hood it can't just set `CLAUDE_CODE_OAUTH_TOKEN` and call `claude` — the `env`
 block in `~/.claude/settings.json` overrides the environment. So each account is called
