@@ -1533,13 +1533,9 @@ cmd_usage() {
   wait
 
   printf '\n'
-  T_ACC="$(t usg_hdr_acc)" T_5H="$(t usg_hdr_5h)" T_7D="$(t usg_hdr_7d)" \
-  T_OUT="$(t usg_out)" T_BACK="$(t usg_out_back)" T_SHORT="$(t usg_out_short)" \
-  T_LEFT="$(t usg_left)" T_DAYS="$(t usg_days)" T_DAYH="$(t usg_day_h)" \
-  T_MOST="$(t usg_most)" T_MOST2="$(t usg_most2)" T_MOST3="$(t usg_most3)" \
-  C_G="$c_g" C_R="$c_r" C_Y="$c_y" C_DIM="$c_dim" C_0="$c_0" \
   # Ghi lai so lieu: `ls` se doc tu day. Neu `ls` tu goi API thi moi lan xem
   # danh sach lai mo cua so 5h cua MOI acc — tac dung phu khong ai muon.
+  # Khoi nay khong dich thuat gi ca, nen KHONG gan bien T_* o day.
   python3 - "$base" "$USAGECACHE" "${accs[@]}" <<'PYEOF2'
 import os, sys, time
 base, cache, names = sys.argv[1], sys.argv[2], sys.argv[3:]
@@ -1564,6 +1560,19 @@ with os.fdopen(fd, "w", encoding="utf-8") as f:
 os.replace(cache + ".t", cache)
 PYEOF2
 
+  # Bang hien thi thuc su — day moi la noi CAN cac bien T_*.
+  #
+  # CANH BAO da tra gia mot lan: dung dat comment GIUA khoi gan bien (ket
+  # thuc bang `\`) va lenh python3. Comment o giua se CAT DUT logical line —
+  # khoi gan bien thanh mot cau lenh KHONG XUAT rieng biet (khong lenh nao di
+  # kem), python3 chay nhu lenh khac hoan toan khong thay T_* nao, va roi ve
+  # fallback tieng Anh trong code du dang o che do vi. Comment phai dat
+  # TRUOC ca khoi gan bien (nhu tren), khong bao gio o giua no va python3.
+  T_ACC="$(t usg_hdr_acc)" T_5H="$(t usg_hdr_5h)" T_7D="$(t usg_hdr_7d)" \
+  T_OUT="$(t usg_out)" T_BACK="$(t usg_out_back)" T_SHORT="$(t usg_out_short)" \
+  T_LEFT="$(t usg_left)" T_DAYS="$(t usg_days)" T_DAYH="$(t usg_day_h)" \
+  T_MOST="$(t usg_most)" T_MOST2="$(t usg_most2)" T_MOST3="$(t usg_most3)" \
+  C_G="$c_g" C_R="$c_r" C_Y="$c_y" C_DIM="$c_dim" C_0="$c_0" \
   python3 - "$base" "${accs[@]}" <<'PYEOF'
 import os, sys, time
 
@@ -1694,7 +1703,7 @@ for name in names:
 if len(best) > 1:
     best.sort()
     print("\n%s%s %s%s%s%s" % (D, E("T_MOST", "Most headroom:"), Z, best[0][1], D,
-                               E("T_MOST2", " (5h only %s%%%% used)") % round(best[0][0] * 100)))
+                               E("T_MOST2", " (busiest window only %s%% used)") % round(best[0][0] * 100)))
     print("%s%s" % (E("T_MOST3", "  -> use it here:  claude-acc switch %s --here") % best[0][1], Z))
 PYEOF
   rm -rf "$base"; trap - EXIT INT TERM
