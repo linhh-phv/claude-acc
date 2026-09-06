@@ -135,6 +135,7 @@ t_vi() {
     ls_pins)        printf '%b' 'GHIM THEO THƯ MỤC' ;;
     ls_pins_hint)   printf '%b' 'claude-acc switch <tên> --here' ;;
     ls_dir_gone)    printf '%b' 'thư mục không còn — claude-acc sync' ;;
+    ls_ws_summary)  printf '%b' 'cả workspace: %s folder (%s dùng chung, %s giữ cấu hình riêng)' ;;
 
     usage_run)      printf '%b' 'dùng: claude-acc run <tên-acc|main> [-- <tham số cho claude>]' ;;
     run_dirpin)     printf '%b' 'thư mục này đang GHIM acc "%s" (%s) — nó đè lên `run`.\n     Đổi ghim:  claude-acc switch %s --here\n     Bỏ ghim :  claude-acc switch off --here' ;;
@@ -339,6 +340,7 @@ t_en() {
     ls_pins)        printf '%b' 'DIRECTORY PINS' ;;
     ls_pins_hint)   printf '%b' 'claude-acc switch <name> --here' ;;
     ls_dir_gone)    printf '%b' 'directory is gone — claude-acc sync' ;;
+    ls_ws_summary)  printf '%b' 'whole workspace: %s folders (%s shared, %s keep their own config)' ;;
 
     usage_run)      printf '%b' 'usage: claude-acc run <name|main> [-- <args for claude>]' ;;
     run_dirpin)     printf '%b' 'this directory pins account "%s" (%s) — it overrides `run`.\n     Move the pin: claude-acc switch %s --here\n     Drop the pin: claude-acc switch off --here' ;;
@@ -1850,18 +1852,81 @@ print(walk(d) or "")
 
   if [[ -s "$REPOS" ]]; then
     printf '\n%s%s%s %s(%s)%s\n' "$c_b" "$(t ls_pins)" "$c_0" "$c_dim" "$(t ls_pins_hint)" "$c_0"
-    local d a mark
-    while IFS=$'\t' read -r d a; do
-      [[ -n "$d" ]] || continue
-      mark=" "
-      [[ "$d" == "$(pwd -P)" ]] && mark="*"
-      if [[ -d "$d" ]]; then
-        printf '  %s %-8s %s\n' "$mark" "$a" "${d/#$HOME/~}"
-      else
-        printf '  %s %-8s %s %s(%s)%s\n' \
-          "$mark" "$a" "${d/#$HOME/~}" "$c_dim" "$(t ls_dir_gone)" "$c_0"
-      fi
-    done < "$REPOS"
+    # Cac folder cua CUNG mot workspace khong duoc liet ke ngang hang: nguoi
+    # dung ghim MOT lan cho workspace, thay 3 dong hien ra se tuong minh da
+    # ghim 3 cho rieng biet. Gom chung lai duoi folder [0].
+    T_WS="$(t ls_ws_summary)" T_GONE="$(t ls_dir_gone)" C_DIM="$c_dim" C_0="$c_0" \
+    python3 - "$REPOS" "$HOME" "$(pwd -P)" <<'PYEOF'
+import json, os, re, glob, sys
+
+reg_path, home, cwd = sys.argv[1], sys.argv[2], sys.argv[3]
+# Mau lay tu bash: script tu tat mau khi dau ra khong phai terminal,
+# python block phai theo, khong duoc tu in ma ANSI.
+D, Z = os.environ.get("C_DIM", ""), os.environ.get("C_0", "")
+T_WS = os.environ.get("T_WS") or "whole workspace: %s folders (%s shared, %s keep their own config)"
+T_GONE = os.environ.get("T_GONE") or "directory is gone"
+
+rows = []
+for ln in open(reg_path, encoding="utf-8") if os.path.exists(reg_path) else []:
+    ln = ln.rstrip("\n")
+    if "\t" in ln:
+        d, a = ln.split("\t", 1)
+        rows.append((d, a))
+
+def ws_of(start):
+    """(folder[0], moi folder) cua workspace chua thu muc nay, hoac (None, [])."""
+    start = os.path.realpath(start)
+    d = start
+    for _ in range(6):
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        for ws in sorted(glob.glob(os.path.join(parent, "*.code-workspace"))):
+            try:
+                raw = open(ws, encoding="utf-8").read()
+                try:
+                    data = json.loads(raw)
+                except Exception:
+                    data = json.loads(re.sub(r"^\s*//.*$", "", raw, flags=re.M))
+            except Exception:
+                continue
+            base = os.path.dirname(ws)
+            paths = [os.path.realpath(os.path.join(base, f["path"]))
+                     for f in (data.get("folders") or []) if f.get("path")]
+            if paths and any(start == q or start.startswith(q + os.sep) for q in paths):
+                return paths[0], paths
+        d = parent
+    return None, []
+
+known = {os.path.realpath(d) for d, _ in rows}
+shown = []
+members = set()
+for d, a in rows:
+    root, _ = ws_of(d)
+    if root and os.path.realpath(d) != root and root in known:
+        members.add(os.path.realpath(d))
+
+for d, a in rows:
+    if os.path.realpath(d) in members:
+        continue
+    mark = "*" if os.path.realpath(d) == os.path.realpath(cwd) else " "
+    label = d.replace(home, "~", 1) if d.startswith(home) else d
+    if not os.path.isdir(d):
+        print("  %s %-8s %s %s(%s)%s" % (mark, a, label, D, T_GONE, Z))
+        continue
+    print("  %s %-8s %s" % (mark, a, label))
+    root, paths = ws_of(d)
+    if root == os.path.realpath(d) and len(paths) > 1:
+        sym = own = 0
+        for q in paths[1:]:
+            f = os.path.join(q, ".claude", "settings.local.json")
+            if os.path.islink(f):
+                sym += 1
+            elif os.path.isfile(f) and os.path.realpath(q) in known:
+                own += 1
+        if sym or own:
+            print("             %s%s%s" % (D, T_WS % (len(paths), sym, own), Z))
+PYEOF
   fi
 }
 
