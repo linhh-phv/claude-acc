@@ -74,6 +74,7 @@ claude-acc switch personal --here   # only this repo; the global account is unto
 | This repo back on the main account | `claude-acc switch main --here` |
 | Stop pinning this repo | `claude-acc switch off --here` |
 | Who is being used, and where? | `claude-acc ls` |
+| How much each account has left | `claude-acc ls` (from the last check) |
 | Read everything in Vietnamese | `claude-acc lang vi` |
 | See how much each account has left (and start its 5h window) | `claude-acc usage` |
 
@@ -252,7 +253,7 @@ That's why `claude-acc ls` can show an email for `main` but not for token accoun
 | `sync` | Rewrite the token in every pinned directory (after re-adding an account), and drop directories that no longer exist. |
 | `usage [name...]` | Show 5h / 7d utilization and reset times per account, and suggest the one with most headroom. Costs one request per account (9 tokens), which also starts that account's 5-hour window. Also spelled `quota`, `trigger`, `warm`. |
 | `lang [vi\|en\|auto]` | Show or change the language of every message, `help` included. Defaults to the system `LANG`, falling back to English. |
-| `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. |
+| `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. Shows each account's last known 5h / 7d usage with the age of that reading — read from cache, so `ls` never spends a request or starts a window. |
 | `check <name\|main>` | Verify an account's credential still works, with a real API call — not just a config read. |
 | `login [--browser <app>]` | Re-run `claude auth login` for `main` (this overwrites the Keychain — `main` only). |
 | `rm <name>` | Remove a secondary account's token. |
