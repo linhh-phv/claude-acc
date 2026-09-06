@@ -1615,10 +1615,18 @@ cmd_usage() {
   T_OUT="$(t usg_out)" T_BACK="$(t usg_out_back)" T_SHORT="$(t usg_out_short)" \
   T_LEFT="$(t usg_left)" T_DAYS="$(t usg_days)" T_DAYH="$(t usg_day_h)" \
   T_MOST="$(t usg_most)" T_MOST2="$(t usg_most2)" T_MOST3="$(t usg_most3)" \
+  C_G="$c_g" C_R="$c_r" C_Y="$c_y" C_DIM="$c_dim" C_0="$c_0" \
   python3 - "$base" "${accs[@]}" <<'PYEOF'
 import os, sys, time
 
-G, R, Y, D, Z = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
+# Mau lay tu bash, khong hardcode: script tu tat mau khi dau ra khong phai
+# terminal, va block nay phai theo (neu khong `claude-acc usage > file` se
+# dinh day ma ANSI).
+G = os.environ.get("C_G", "")
+R = os.environ.get("C_R", "")
+Y = os.environ.get("C_Y", "")
+D = os.environ.get("C_DIM", "")
+Z = os.environ.get("C_0", "")
 base, names = sys.argv[1], sys.argv[2:]
 
 def E(key, fallback):
@@ -1704,14 +1712,18 @@ for name in names:
     ok = not (out5 or out7)
 
     if out5:
-        five = "%s%s%s  %s" % (R, E("T_OUT", "LIMIT REACHED"), Z,
-                               E("T_BACK", "back at %s") % short(r5))
+        # Van in ca % : mot dong chi ghi "HET HAN MUC" ben canh con so 90%
+        # o lan chay truoc khien nguoi doc tuong cong cu bao sai.
+        five = "%s%s %d%%%s  %s" % (R, E("T_OUT", "LIMIT REACHED"),
+                                    round((pct(u5) or 0) * 100), Z,
+                                    E("T_BACK", "back at %s") % short(r5))
     else:
         five = "%s  %s" % (cell(u5, Y if warn5 else ""), short(r5))
 
     if out7:
-        seven = "%s%s%s  %s" % (R, E("T_SHORT", "OUT"), Z,
-                                E("T_BACK", "back at %s") % short(r7, with_date=True))
+        seven = "%s%s %d%%%s  %s" % (R, E("T_SHORT", "OUT"),
+                                     round((pct(u7) or 0) * 100), Z,
+                                     E("T_BACK", "back at %s") % short(r7, with_date=True))
     else:
         p7 = "%3d%%" % round((pct(u7) or 0) * 100)
         if warn7:
