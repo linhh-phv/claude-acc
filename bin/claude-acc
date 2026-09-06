@@ -124,6 +124,7 @@ t_vi() {
     share_done)     printf '%b' 'đã cho %s folder khác của workspace dùng CHUNG ghim này (symlink — token chỉ nằm một chỗ)' ;;
     share_skip)     printf '%b' 'bỏ qua %s — thư mục này đã có settings.local.json riêng, không dám ghi đè' ;;
     share_merged)   printf '%b' 'ghi ghim vào %s (thư mục này giữ cấu hình riêng nên không dùng chung file được)' ;;
+    git_skip)       printf '%b' 'bỏ qua %s — .claude/settings.local.json ở đó đang được git theo dõi (gỡ bằng: git rm --cached .claude/settings.local.json)' ;;
     share_merged_n) printf '%b' '(%s thư mục nhận ghim riêng vì có cấu hình riêng — vẫn đổi theo mỗi lần switch)' ;;
     share_skip_n)   printf '%b' '(%s thư mục bị bỏ qua; xem ở trên)' ;;
     ls_main_desc)   printf '%b' 'Keychain — đầy đủ connectors, Remote Control' ;;
@@ -327,6 +328,7 @@ t_en() {
     share_done)     printf '%b' '%s other workspace folders now SHARE this pin (symlink — the token lives in one place)' ;;
     share_skip)     printf '%b' 'skipped %s — it has its own settings.local.json, not overwriting it' ;;
     share_merged)   printf '%b' 'wrote the pin into %s (it keeps its own config, so it cannot share the file)' ;;
+    git_skip)       printf '%b' 'skipped %s — its .claude/settings.local.json is tracked by git (untrack it: git rm --cached .claude/settings.local.json)' ;;
     share_merged_n) printf '%b' '(%s directories got their own pin because they keep their own config — still updated on every switch)' ;;
     share_skip_n)   printf '%b' '(%s directories skipped; see above)' ;;
     ls_main_desc)   printf '%b' 'Keychain — full connectors, Remote Control' ;;
@@ -650,11 +652,21 @@ PYEOF
 
 # Chan nguy co commit nham token. Khong sua .gitignore cua repo (nhat la repo
 # cong ty) — dung .git/info/exclude: chi co tren may nay, khong vao lich su.
+# Tra ve 1 neu KHONG an toan de ghi token vao thu muc nay (file dang duoc git
+# theo doi). Khong die — de nguoi goi quyet dinh: mot lenh ghim MOT thu muc
+# thi dung han lai, con mot lenh chay HANG LOAT thi bo qua rieng cho do va
+# di tiep, khong duoc chet giua chung bo lai nhung folder con lai.
+git_pin_ok() {
+  local dir="$1" rel=".claude/settings.local.json"
+  git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  ! git -C "$dir" ls-files --error-unmatch "$rel" >/dev/null 2>&1
+}
+
 guard_git() {
   local dir="$1" rel=".claude/settings.local.json"
   git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || return 0
 
-  if git -C "$dir" ls-files --error-unmatch "$rel" >/dev/null 2>&1; then
+  if ! git_pin_ok "$dir"; then
     die "$(tp err_git_track "$rel" "$dir" "$rel")"
   fi
 
@@ -1180,6 +1192,7 @@ sync_ws_members() {
     local tf; tf="$(repo_file "$f")"
     [[ -f "$tf" && ! -L "$tf" ]] || continue
     [[ -n "$(repo_pin "$f")" ]] || continue
+    git_pin_ok "$f" || { info "${c_y}$(tp git_skip "$f")${c_0}"; continue; }
     write_repo_pin "$f" "$name" "$tok"
     reg_set "$f" "$name"
     n=$((n+1))
@@ -1206,12 +1219,17 @@ share_workspace() {
       if _only_pin "$target"; then
         rm -f "$target"
       else
-        guard_git "$f"
+        if ! git_pin_ok "$f"; then
+          info "${c_y}$(tp git_skip "$f")${c_0}"; skipped=$((skipped+1)); continue
+        fi
         write_repo_pin "$f" "$acc_name" "$acc_tok"
         reg_set "$f" "$acc_name"
         info "${c_dim}$(tp share_merged "$f")${c_0}"
         merged=$((merged+1)); continue
       fi
+    fi
+    if ! git_pin_ok "$f"; then
+      info "${c_y}$(tp git_skip "$f")${c_0}"; skipped=$((skipped+1)); continue
     fi
     guard_git "$f"
     mkdir -p "$f/.claude"
@@ -1336,7 +1354,7 @@ cmd_reassign() {
     if [[ ! -d "$dir" ]]; then
       info "${c_y}$(tp ra_skip "$dir")${c_0}"; missing=$((missing+1)); continue
     fi
-    guard_git "$dir"
+    git_pin_ok "$dir" || { info "${c_y}$(tp git_skip "$dir")${c_0}"; continue; }
     write_repo_pin "$dir" "$new" "$tok"
     reg_set "$dir" "$new"
     info "  $dir"
@@ -1367,7 +1385,7 @@ cmd_sync() {
       fi
     fi
     local before; before="$(repo_pin "$dir")"
-    guard_git "$dir"
+    git_pin_ok "$dir" || { info "${c_y}$(tp git_skip "$dir")${c_0}"; continue; }
     write_repo_pin "$dir" "$acc" "$tok"
     # ghim toan cuc cung phai theo, nhung chi ghi MOT lan (o cuoi ham)
     [[ "$(pinned_acc)" == "$acc" ]] && global_tok="$tok"
