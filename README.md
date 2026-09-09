@@ -287,6 +287,20 @@ Run `claude-acc help` any time for the full reference in whichever language is a
 | `--stdin` | Pipe a token in: `pbpaste \| claude-acc add work --stdin`. |
 | `--no-setup` | Skip running `claude setup-token` entirely — pair with `--clip`/`--stdin` when you already ran it yourself and just want to register the result. |
 
+### `add` needs an OTP; `switch` never does
+
+Worth being clear about, because it decides whether an account is practical for you:
+**`claude setup-token` asks for a one-time code** sent to that account's owner, every time you
+add or renew. Having the account already signed in in that browser is not enough — measured on
+two different accounts, both asked.
+
+Everything after that is OTP-free: `switch`, `--here`, `usage`, day-to-day use. The one-time
+code is the cost of *minting* a credential, not of using it.
+
+The consequence for a shared account: you need its owner present each time you add it, and again
+whenever its token expires (about a year) or gets revoked. If that owner is hard to reach, that
+account is a poor thing to pin a repo to.
+
 ### What to expect when it runs
 
 `claude setup-token` completes one of two ways, and which one it picks isn't something `claude-acc` controls:
