@@ -190,7 +190,8 @@ t_vi() {
     usg_most2)      printf '%b' ' (cửa sổ nặng nhất mới dùng %s%%)' ;;
     usg_most3)      printf '%b' '  -> dùng cho repo đang làm:  claude-acc switch %s --here' ;;
     usg_nocred)     printf '%b' 'không đọc được credential của main trong Keychain' ;;
-    usg_expired)    printf '%b' 'HTTP %s — token không còn dùng được' ;;
+    usg_expired)    printf '%b' 'HTTP %s — token không dùng được nữa; lấy token mới: claude-acc add <tên>' ;;
+    usg_fix)        printf '%b' 'lấy token mới: claude-acc add %s' ;;
     err_ambig_ws)   printf '%b' 'thư mục này nằm trong NHIỀU workspace khác nhau (%s).\n     Mỗi workspace chạy claude ở folder [0] của nó, nên không đoán được.\n     Chỉ định thẳng: claude-acc switch <tên> --here --at <đường-dẫn-folder-0>' ;;
     err_git_track)  printf '%b' '%s của repo này ĐANG ĐƯỢC GIT THEO DÕI — ghi token vào đó là một\n     bước đi thẳng tới việc commit nhầm token lên remote.\n     Gỡ theo dõi trước rồi chạy lại:\n       git -C %s rm --cached %s' ;;
     git_excluded)   printf '%b' '  (đã thêm %s vào .git/info/exclude — chỉ máy này, không vào repo)' ;;
@@ -394,7 +395,8 @@ t_en() {
     usg_most2)      printf '%b' ' (busiest window only %s%% used)' ;;
     usg_most3)      printf '%b' '  -> use it for the repo you are in:  claude-acc switch %s --here' ;;
     usg_nocred)     printf '%b' 'could not read the main credential from the Keychain' ;;
-    usg_expired)    printf '%b' 'HTTP %s — token no longer usable' ;;
+    usg_expired)    printf '%b' 'HTTP %s — token no longer usable; mint a new one: claude-acc add <name>' ;;
+    usg_fix)        printf '%b' 'mint a new one: claude-acc add %s' ;;
     err_ambig_ws)   printf '%b' 'this directory belongs to SEVERAL different workspaces (%s).\n     Each one runs claude in its own folder [0], so this is not guessable.\n     Name it directly: claude-acc switch <name> --here --at <path-to-folder-0>' ;;
     err_git_track)  printf '%b' '%s in this repo is TRACKED BY GIT — writing a token into it is one\n     step away from committing that token to a remote.\n     Untrack it first, then run this again:\n       git -C %s rm --cached %s' ;;
     git_excluded)   printf '%b' '  (added %s to .git/info/exclude — this machine only, never in the repo)' ;;
@@ -1152,7 +1154,11 @@ except urllib.error.HTTPError as e:
     # 429 = het han muc, nhung TOKEN VAN DUNG DUOC. Ghim khong hong.
     if e.code == 429:
         sys.exit(0)
-    print("HTTP %d" % e.code)
+    try:
+        why = (json.loads(e.read().decode()).get("error") or {}).get("message", "")
+    except Exception:
+        why = ""
+    print("HTTP %d%s" % (e.code, (" — " + why) if why else ""))
     sys.exit(1)
 except Exception as e:
     print(str(e)[:70])
@@ -1451,7 +1457,7 @@ refresh_main_token() {
 }
 
 usage_probe() {
-  CLAUDE_ACC_TOK="$1" T_EXPIRED="$(t usg_expired)" python3 - > "$2" <<'PYEOF'
+  CLAUDE_ACC_TOK="$1" T_FIX="$(tp usg_fix "${3:-<tên>}")" python3 - > "$2" <<'PYEOF'
 import json, os, sys, urllib.request, urllib.error
 
 body = json.dumps({"model": "claude-haiku-4-5-20251001", "max_tokens": 1,
@@ -1462,13 +1468,20 @@ req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body,
     "anthropic-beta": "oauth-2025-04-20",
     "content-type": "application/json",
 })
-code, h = 0, None
+code, h, reason = 0, None, ""
 try:
     r = urllib.request.urlopen(req, timeout=60)
     code, h = r.status, r.headers
 except urllib.error.HTTPError as e:
     # 429 = het han muc: van tra ve day du headers, van doc duoc.
     code, h = e.code, e.headers
+    # Body chua LY DO that. Truoc day no bi vut di, nen mot token bi THU HOI
+    # va mot token HET HAN deu hien ra cung mot cau "token khong con dung
+    # duoc" — hai chuyen khac han nhau, cach xu ly cung khac.
+    try:
+        reason = (json.loads(e.read().decode()).get("error") or {}).get("message", "")
+    except Exception:
+        reason = ""
 except Exception as e:
     print("ERR\t%s" % str(e)[:70]); sys.exit()
 
@@ -1476,7 +1489,11 @@ def g(name, default=""):
     return h.get("anthropic-ratelimit-unified-" + name, default) if h else default
 
 if code == 401 or code == 403:
-    print("EXPIRED\t" + (os.environ.get("T_EXPIRED") or "HTTP %s - token no longer usable") % code)
+    # Ly do dat TRUOC loi khuyen: nguoi doc can biet CHUYEN GI xay ra da,
+    # roi moi den viec phai lam. "Thu hoi" va "het han" doi hoi cach nghi
+    # khac nhau, du cach chua deu la lay token moi.
+    print("EXPIRED\tHTTP %d — %s · %s" % (
+        code, reason or "token no longer usable", os.environ.get("T_FIX", "")))
     sys.exit()
 if not g("5h-status") and code >= 400:
     print("ERR\tHTTP %d" % code); sys.exit()
@@ -1496,14 +1513,14 @@ usage_one() {
       || { printf 'ERR\t%s\n' "$(tp warm_lost "$acc")" > "$out_file"; return; }
   fi
 
-  usage_probe "$tok" "$out_file"
+  usage_probe "$tok" "$out_file" "$acc"
 
   # 'main' het han thi khong phai hong — chi la accessToken ngan han da qua
   # han. Nho Claude Code lam moi mot lan roi hoi lai, thay vi bao loi.
   if [[ "$acc" == "main" ]] && head -c 7 "$out_file" 2>/dev/null | grep -q '^EXPIRED'; then
     refresh_main_token
     tok="$(main_access_token)" || return
-    usage_probe "$tok" "$out_file"
+    usage_probe "$tok" "$out_file" "$acc"
   fi
 }
 
