@@ -314,6 +314,10 @@ Your `main` account never has this trade-off: it stays exclusively in the encryp
   a credential can also be **revoked** — by signing out everywhere, a password change, or an org
   admin ending sessions. `usage` and `check` print the API's own words, so revoked and expired
   read differently instead of both saying "token no longer usable".
+- **Minting a new token does not revoke the old ones.** Measured, because the docs do not say:
+  one account held a Keychain session and two separate `setup-token` credentials alive at the
+  same time. So adding the same account on a second machine does not cut off the first, and
+  `claude auth login` on an account does not invalidate its `setup-token`s either.
 - **Tokens expire after about a year.** `claude-acc check <name>` tells you when one has. Run `claude-acc add <name>` again to mint a fresh one — it overwrites the Keychain entry and pushes the new token into every place already pinned to that account, the global pin included.
 - **A token is briefly visible via `ps` while `claude-acc add` writes it to the Keychain.** `security add-generic-password -w <password>` requires the password as a command-line argument — its own man page's only non-interactive option — so for the moment that one command runs, the token is technically readable by another local user running `ps -ef`, or by exec-argv-logging security/EDR software on managed machines. This is a limitation of the macOS `security` CLI itself, not something `claude-acc` can close without reimplementing Keychain writes against the native Keychain Services API. Everywhere else (settings.json writes, subprocess env passing) `claude-acc` avoids putting the token in argv.
 
