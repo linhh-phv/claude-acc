@@ -151,6 +151,7 @@ t_vi() {
 
     usage_check)    printf '%b' 'dùng: claude-acc check <tên-acc|main>' ;;
     chk_main_ok)    printf '%b' 'main dùng được' ;;
+    chk_rate_limited) printf '%b' '— nhưng acc đang HẾT hạn mức, chờ tới giờ reset (xem: claude-acc usage)' ;;
     chk_main_bad)   printf '%b' 'main KHÔNG dùng được' ;;
     chk_main_bad2)  printf '%b' ' — chạy: claude auth login' ;;
     chk_ok)         printf '%b' '%s dùng được' ;;
@@ -356,6 +357,7 @@ t_en() {
 
     usage_check)    printf '%b' 'usage: claude-acc check <name|main>' ;;
     chk_main_ok)    printf '%b' 'main works' ;;
+    chk_rate_limited) printf '%b' '— but the account is OUT of quota right now; wait for the reset (see: claude-acc usage)' ;;
     chk_main_bad)   printf '%b' 'main does NOT work' ;;
     chk_main_bad2)  printf '%b' ' — run: claude auth login' ;;
     chk_ok)         printf '%b' '%s works' ;;
@@ -1185,8 +1187,12 @@ try:
     urllib.request.urlopen(req, timeout=60)
     sys.exit(0)
 except urllib.error.HTTPError as e:
-    # 429 = het han muc, nhung TOKEN VAN DUNG DUOC. Ghim khong hong.
+    # 429 = het han muc, nhung TOKEN VAN DUNG DUOC. In ra mot dau rieng de
+    # nguoi goi noi dung chuyen: "het luot" khac han "credential hong", va
+    # khuyen nguoi dung di dang nhap lai khi ho chi can doi toi gio reset la
+    # mot loi khuyen sai.
     if e.code == 429:
+        print("RATE_LIMITED")
         sys.exit(0)
     try:
         why = (json.loads(e.read().decode()).get("error") or {}).get("message", "")
@@ -2100,29 +2106,52 @@ cmd_check() {
   local name="${1:-}"
   [[ -n "$name" ]] || die "$(t usage_check)"
 
+  # Hoi THANG API bang dung credential can kiem — khong chay `claude`, vi khoi
+  # `env` trong settings.json de len bien moi truong va se lam ta kiem nham
+  # acc dang ghim (cung loi da vap o `add`).
+  local tok out
   if [[ "$name" == "main" ]]; then
     env -u CLAUDE_CODE_OAUTH_TOKEN claude auth status --text
-    printf '%s%s%s\n' "$c_dim" "$(t trying_real)" "$c_0" >&2
-    if ( unset CLAUDE_CODE_OAUTH_TOKEN; probe ); then
-      printf '%s✓ %s%s\n' "$c_g" "$(t chk_main_ok)" "$c_0"
-    else
-      printf '%s✗ %s%s%s\n' "$c_r" "$(t chk_main_bad)" "$c_0" "$(t chk_main_bad2)"
-      return 1
-    fi
-    return
+    tok="$(main_access_token 2>/dev/null || true)"
+    [[ -n "$tok" ]] || { printf '%s✗ %s%s\n' "$c_r" "$(t usg_nocred)" "$c_0"; return 1; }
+  else
+    valid_name "$name"
+    tok="$(token_of "$name")"
+    ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; claude auth status --text )
   fi
 
-  valid_name "$name"
-  local tok; tok="$(token_of "$name")"
-  ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; claude auth status --text )
   printf '%s%s%s\n' "$c_dim" "$(t trying_real)" "$c_0" >&2
-  if ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; probe ); then
-    printf '%s✓ %s%s\n' "$c_g" "$(tp chk_ok "$name")" "$c_0"
-  else
-    printf '%s✗ %s%s%s\n' \
-      "$c_r" "$(tp chk_bad "$name")" "$c_0" "$(tp chk_bad2 "$name")"
-    return 1
+
+  # MOT lan goi, giu lai ca ma thoat lan loi. Goi lai nhieu lan de "kiem tra
+  # cho chac" nghia la dot them han muc cua chinh acc dang kiem.
+  local rc=0
+  out="$(probe_token_api "$tok")" || rc=$?
+
+  if [[ $rc -ne 0 && "$name" == "main" ]]; then
+    # accessToken cua main song ngan — nho Claude Code lam moi roi thu lai
+    refresh_main_token
+    tok="$(main_access_token 2>/dev/null || true)"
+    if [[ -n "$tok" ]]; then rc=0; out="$(probe_token_api "$tok")" || rc=$?; else rc=1; fi
   fi
+
+  local nhan
+  if [[ "$name" == "main" ]]; then nhan="$(t chk_main_ok)"; else nhan="$(tp chk_ok "$name")"; fi
+  if [[ $rc -eq 0 ]]; then
+    if [[ "$out" == RATE_LIMITED ]]; then
+      printf '%s✓ %s%s %s%s%s\n' "$c_g" "$nhan" "$c_0" "$c_y" "$(t chk_rate_limited)" "$c_0"
+    else
+      printf '%s✓ %s%s\n' "$c_g" "$nhan" "$c_0"
+    fi
+    return 0
+  fi
+
+  if [[ "$name" == "main" ]]; then
+    printf '%s✗ %s%s%s\n' "$c_r" "$(t chk_main_bad)" "$c_0" "$(t chk_main_bad2)"
+  else
+    printf '%s✗ %s%s%s\n' "$c_r" "$(tp chk_bad "$name")" "$c_0" "$(tp chk_bad2 "$name")"
+  fi
+  [[ -n "$out" ]] && printf '  %s%s%s\n' "$c_dim" "$out" "$c_0"
+  return 1
 }
 
 cmd_uninstall() {
