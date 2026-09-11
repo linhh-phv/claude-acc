@@ -820,7 +820,39 @@ run_setup_token_capture() {
     script -q "$logf" claude setup-token
   fi
   status=$?
-  CAPTURED_TOKEN="$(grep -m1 -o 'sk-ant-oat01-[A-Za-z0-9._-]*' "$logf" 2>/dev/null || true)"
+  # KHONG dung grep -o thang: `script` ghi lai DUNG nhung gi hien tren man
+  # hinh, ke ca dau xuong dong do TERMINAL tu chen vao khi token dai hon be
+  # ngang cua so. grep dung o dau dong => bat duoc mot token CUT. Da xay ra
+  # that: cua so hep, token 108 ky tu bi luu con 91, API bao "invalid".
+  CAPTURED_TOKEN="$(python3 - "$logf" <<'PYEOF' 2>/dev/null || true
+import re, sys
+try:
+    raw = open(sys.argv[1], "rb").read().decode("utf-8", "replace")
+except Exception:
+    sys.exit(0)
+raw = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", raw)      # bo ma mau
+raw = raw.replace("\r\n", "\n").replace("\r", "\n")
+lines = raw.split("\n")
+CONT = re.compile(r"^[A-Za-z0-9._-]+$")
+for i, ln in enumerate(lines):
+    m = re.search(r"sk-ant-oat01-[A-Za-z0-9._-]*", ln)
+    if not m:
+        continue
+    tok = m.group(0)
+    # Chi noi tiep khi token cham DUNG cuoi dong (dau hieu bi ngat), va dong
+    # sau bat dau ngay cot 0 (dong nguyen ven cua `claude` deu co thut le)
+    # va chi gom ky tu hop le cua token.
+    j = i + 1
+    while m.end() == len(ln) and j < len(lines):
+        nxt = lines[j]
+        if not nxt or nxt[0].isspace() or not CONT.match(nxt):
+            break
+        tok += nxt
+        ln, m, j = nxt, re.match(r".*", nxt), j + 1
+    print(tok)
+    break
+PYEOF
+)"
   rm -f "$logf"
   return $status
 }
@@ -988,13 +1020,15 @@ EOF
   resync_acc "$name" "$tok"
   info "${c_dim}$(tp add_saved "$name")${c_0}"
 
-  # `probe` la ham co san trong chinh script nay, subshell da thua ke duoc —
-  # khong can `bash -c "$(declare -f probe); probe"`. Va export trong subshell
-  # thay vi `env VAR=val cmd`: dung `env` de gan bien tao ra mot tien trinh
-  # rieng ma chinh argv cua no chua token — `ps -ef` cua user khac tren may
-  # doc duoc trong luc lenh chay. export/subshell khong tao tien trinh nao co
-  # token trong argv ca.
-  if ( export CLAUDE_CODE_OAUTH_TOKEN="$tok"; probe ) >&2; then
+  # Hoi THANG API bang dung token vua luu, khong chay `claude`.
+  #
+  # Truoc day cho nay export CLAUDE_CODE_OAUTH_TOKEN roi goi `claude` — va do
+  # la mot phep thu VO NGHIA: khoi `env` trong ~/.claude/settings.json DE LEN
+  # bien moi truong (chinh co che claude-acc dua vao de `switch` chay duoc).
+  # Nen khi dang ghim mot acc khac, buoc "kiem tra" thu acc DANG GHIM roi bao
+  # "token hop le" — cho mot token co the hong hoan toan. Da xay ra that: mot
+  # token bi cat cut van duoc bao la san sang.
+  if probe_token_api "$tok" >&2; then
     info "${c_g}✓ $(tp add_ready "$name")${c_0}$(tp add_ready2 "$name")"
   else
     info "${c_r}✗ $(t add_bad)${c_0}"

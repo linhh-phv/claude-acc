@@ -308,6 +308,10 @@ account is a poor thing to pin a repo to.
 - It redirects straight back to your terminal and finishes on its own, or
 - After you authorize in the browser, it shows a short **code** on that page and the terminal waits at `Paste code here if prompted >` for you to bring it back. This is a normal fallback built into Claude Code itself, not a `claude-acc` bug or a stuck terminal — type or paste the code and press Enter.
 
+The capture reads the token across a line break, because `script` records what the terminal
+*displayed* — including the newline a narrow window inserts mid-token. Reading only the first
+line stored a truncated credential that the API rejected as `invalid`.
+
 Either way, once `claude setup-token` prints the final `sk-ant-oat01-…` token, `claude-acc` grabs it automatically (it runs the command through `script(1)`, which gives `claude` a real terminal to render into while still letting `claude-acc` read back what it printed) — no copy/paste needed for that last step. If capture ever fails for some reason, it falls back to asking you to paste that token manually, so `add` can never leave you with no way to finish.
 
 ## Why the account's token ends up as plaintext in a JSON file
