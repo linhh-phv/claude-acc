@@ -28,6 +28,9 @@ if ($From -ne "") {
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $tmp
 }
 Move-Item -Force $tmp $dest
+# A downloaded or copied file carries the "came from the internet" mark;
+# clear it so Windows does not block or warn on every run.
+Unblock-File -Path $dest -ErrorAction SilentlyContinue
 Write-Host "installed: $dest ($(& $dest version))" -ForegroundColor Green
 
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
