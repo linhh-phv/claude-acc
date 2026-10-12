@@ -109,3 +109,29 @@ func del(name string) error {
 	}
 	return nil
 }
+
+// WriteTarget stores a generic credential under the exact name t, the way
+// Bun.secrets does. Only the Windows self-test uses it, to plant a fake
+// Claude Code credential under a name of its own.
+func WriteTarget(t, value string) error {
+	p, err := windows.UTF16PtrFromString(t)
+	if err != nil {
+		return err
+	}
+	blob := []byte(value)
+	cred := credentialW{Type: credTypeGeneric, TargetName: p, CredentialBlobSize: uint32(len(blob)), Persist: credPersistLocalMachine}
+	if len(blob) > 0 {
+		cred.CredentialBlob = &blob[0]
+	}
+	if r, _, err := procCredWrite.Call(uintptr(unsafe.Pointer(&cred)), 0); r == 0 {
+		return err
+	}
+	return nil
+}
+
+// DeleteTarget removes the generic credential named t.
+func DeleteTarget(t string) {
+	if p, err := windows.UTF16PtrFromString(t); err == nil {
+		procCredDelete.Call(uintptr(unsafe.Pointer(p)), credTypeGeneric, 0)
+	}
+}

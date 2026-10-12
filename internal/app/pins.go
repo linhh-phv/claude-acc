@@ -217,7 +217,10 @@ func resolveTarget(base string) (dir, note string, err error) {
 		return root, n, nil
 	}
 	if top, ok := gitx.Toplevel(base); ok {
-		return top, "", nil
+		// git's spelling of the path (forward slashes, an 8.3 short name or
+		// another letter case on Windows) is normalised like every other path
+		// claude-acc compares.
+		return fsx.RealPath(top), "", nil
 	}
 	return fsx.RealPath(base), "", nil
 }

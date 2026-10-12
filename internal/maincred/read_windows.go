@@ -18,3 +18,13 @@ func readRaw() ([]byte, error) {
 	}
 	return os.ReadFile(credentialsFile())
 }
+
+func where() string {
+	if credmanEnabled() {
+		if _, err := credmanRead(secret.ReadTarget); err == nil {
+			return "credential-manager " + credmanService() + "/" + credmanName
+		}
+		return "file (Credential Manager is in use but holds no entry) " + credentialsFile()
+	}
+	return "file " + credentialsFile()
+}
