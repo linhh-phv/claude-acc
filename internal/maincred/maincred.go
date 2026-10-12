@@ -40,16 +40,9 @@ func AccessToken() (string, error) {
 	return tok, nil
 }
 
-// credentialsFile is where Claude Code keeps the credential outside macOS:
-// <CLAUDE_CONFIG_DIR or ~/.claude>/.credentials.json.
-func credentialsFile() string {
-	dir := os.Getenv("CLAUDE_CONFIG_DIR")
-	if dir == "" {
-		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".claude")
-	}
-	return filepath.Join(dir, ".credentials.json")
-}
+// credentialsFile is where Claude Code keeps the credential as a file:
+// <storage dir>\.credentials.json.
+func credentialsFile() string { return filepath.Join(storageDir(), ".credentials.json") }
 
 // Refresh runs one tiny request through `claude` in a throwaway directory
 // whose settings force the stored credential (an empty token at directory
