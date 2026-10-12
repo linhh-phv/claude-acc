@@ -1,108 +1,78 @@
-# Thử claude-acc trên Windows — checklist
+# Thử claude-acc trên Windows
 
-Bản Windows đã build được, nhưng **chưa ai chạy nó trên một máy Windows thật**. Checklist
-này để người thử chạy theo thứ tự, ghi lại kết quả, rồi gửi lại cho người phát triển.
-
-Mỗi bước có **"Đúng là"**: nếu thấy khác, chụp màn hình (hoặc copy nguyên văn chữ trong
-terminal) và ghi số bước. Không cần sửa gì cả — chỉ cần báo lại.
-
-Ba chỗ **chưa biết chắc**, được đánh dấu ⚠️ bên dưới — đó là những bước quan trọng nhất:
-
-- Claude Code trên Windows có dùng biến `BROWSER` không (ảnh hưởng `--browser`,
-  `--url-only`, và việc tự điền code khi `login`).
-- Lúc `claude auth login` hỏi code, gõ chữ có hiện ra không.
-- Ctrl+C khi đang chạy `claude` qua `claude-acc run`.
+Hai phần: **(1) bộ tự kiểm** chạy tự động khoảng 3 phút và không động tới tài khoản thật;
+**(2) vài bước tay** với tài khoản thật — những thứ không tự động được (OTP, đăng nhập thật,
+extension trong Cursor/VS Code). Gặp gì khác với mô tả: chụp màn hình hoặc copy nguyên văn
+chữ trong terminal, ghi số bước, rồi gửi lại. Không cần tự sửa gì.
 
 ## 0. Chuẩn bị
 
-- Windows 10 hoặc 11, dùng **Windows Terminal** (PowerShell). Nếu thử thêm được cmd.exe
-  thì càng tốt.
-- Claude Code đã cài bản native (`irm https://claude.ai/install.ps1 | iex`) và đã đăng
-  nhập (`claude` chạy được). Tài khoản đang đăng nhập đó gọi là **main**.
-- Một tài khoản Claude **thứ hai** (Pro/Max) để thử `add`. Lưu ý: bước `add` sẽ gửi mã
-  OTP tới email của tài khoản đó.
-- Nhận từ người phát triển: `claude-acc-windows-amd64.exe` (máy ARM thì
-  `claude-acc-windows-arm64.exe`) và `install.ps1`.
+- Windows 10 (bản 1809 trở lên) hoặc Windows 11. Dùng **Windows Terminal** với PowerShell.
+- Claude Code bản native đã cài và đã đăng nhập: `claude` chạy được. Tài khoản đang đăng nhập
+  đó gọi là **main**. (Chưa cài cũng chạy được bộ tự kiểm, chỉ bỏ qua 2 bước dùng claude thật.)
+- Nếu có `git` thì tốt — bộ tự kiểm cần nó cho phần ghim repo/workspace.
+- Nhận 3 file, để chung một thư mục (máy ARM thì dùng bản `arm64`):
+  - `claude-acc-windows-amd64.exe`
+  - `claude-acc-selftest-windows-amd64.exe`
+  - `install.ps1`
 
-Ghi lại: phiên bản Windows, `claude --version`, terminal đang dùng.
+Nếu Windows/SmartScreen chặn file .exe: chuột phải → Properties → tick **Unblock**, hoặc chạy
+`Unblock-File .\*.exe` trong PowerShell ở thư mục đó.
 
-## 1. Cài đặt
+## 1. Bộ tự kiểm (bắt buộc, chạy trước)
+
+```powershell
+cd <thư mục chứa 3 file>
+.\claude-acc-selftest-windows-amd64.exe -bin .\claude-acc-windows-amd64.exe
+```
+
+- Chạy khoảng 2–5 phút. Trong lúc chạy **đừng copy/dán gì** — nó dùng clipboard và trả lại
+  nội dung cũ khi xong.
+- Nó dùng một hồ sơ người dùng tạm, một `claude` giả và một API giả; token thử nằm trong
+  Credential Manager dưới tên riêng và bị xoá khi xong. Tài khoản thật không bị đọc token,
+  không bị ghi gì.
+- Nếu máy có Claude Code, hai bước `TestRealClaude…` chạy `claude.exe` thật nhưng trong hồ sơ
+  tạm và **dừng ở bước hỏi code**, không đăng nhập. Muốn bỏ qua hai bước đó: thêm `-no-real`.
+
+**Đúng là:** dòng cuối là `PASS`. Dù kết quả thế nào, **gửi lại toàn bộ chữ in ra** (bôi đen
+cả terminal rồi copy, hoặc chạy kèm `| Tee-Object selftest.txt` rồi gửi file
+`selftest.txt`). Phần `TestThisMachine` ở đó cho biết phiên bản Windows, Claude Code, và
+claude-acc có đọc được credential của main hay không (không in token ra).
+
+## 2. Cài đặt
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\install.ps1 -From .\claude-acc-windows-amd64.exe
 ```
 
-Mở **terminal mới**, rồi:
+Mở **terminal mới**, chạy `claude-acc version` → **Đúng là:** `claude-acc 2.0.0`.
 
-```powershell
-claude-acc version
-```
+## 3. Với tài khoản thật
 
-**Đúng là:** in `claude-acc 2.0.0`.
-
-## 2. Help, ngôn ngữ, hiển thị
-
-```powershell
-claude-acc help
-claude-acc lang vi
-claude-acc help
-```
-
-**Đúng là:**
-- Bản help nói về **Windows Credential Manager** và **PowerShell**, không nhắc Keychain
-  hay `eval`.
-- Sau `lang vi`, chữ tiếng Việt có dấu hiển thị đúng, không bị vỡ thành ký tự lạ.
-- Tiêu đề in đậm và có màu, không thấy các chuỗi kiểu `←[1m` lọt ra màn hình.
-
-## 3. Xem trạng thái (chỉ đọc, an toàn)
+**3a. Xem (chỉ đọc):**
 
 ```powershell
 claude-acc ls
 claude-acc check main
-claude-acc usage main
 ```
 
-**Đúng là:**
-- `ls` hiện `main` kèm email của bạn.
-- `check main` kết thúc bằng `✓ main dùng được`.
-- `usage main` in một bảng có % cửa sổ 5h / 7 ngày và giờ reset.
+**Đúng là:** `ls` hiện `main` kèm email; `check main` kết thúc bằng `✓ main works`.
 
-## 4. Thêm tài khoản phụ
+**3b. Thêm tài khoản thứ hai** (cần OTP gửi về email của tài khoản đó):
 
 ```powershell
 claude-acc add thu
 ```
 
-Trình duyệt mở ra → đăng nhập **tài khoản thứ hai** → nhập OTP → Authorize. Terminal sẽ
-**in ra token** (chuỗi dài bắt đầu bằng `sk-ant-oat01-`). Bôi đen, copy token đó. Khi
-claude-acc hỏi token, **chỉ cần nhấn Enter**.
+Trình duyệt mở → đăng nhập **tài khoản thứ hai** → nhập OTP → Authorize. Terminal **in ra token**
+(chuỗi dài bắt đầu bằng `sk-ant-oat01-`): bôi đen, copy, rồi khi được hỏi token **chỉ nhấn
+Enter**. **Đúng là:** `✓ "thu" is ready`.
 
-**Đúng là:**
-- Hiện `đã nhận: sk-ant-oat01-…` rồi `✓ "thu" sẵn sàng`.
-- Mở *Control Panel → Credential Manager → Windows Credentials*: có mục
-  `claude-code-token:thu`.
+Nếu thay vào đó trình duyệt hiện một **code** và terminal chờ ở `Paste code here if prompted >`:
+dán code vào rồi Enter, và ghi lại chuyện này.
 
-Nếu trình duyệt hiện một **code** và terminal chờ ở `Paste code here if prompted >`: dán
-code đó vào rồi Enter. Ghi lại chuyện này có xảy ra hay không.
-
-## 5. ⚠️ Chọn trình duyệt
-
-```powershell
-claude-acc add thu2 --browser msedge
-```
-
-Ghi lại: **Edge có mở ra không**, hay vẫn là trình duyệt mặc định? Huỷ bằng Ctrl+C nếu
-không muốn thêm thật.
-
-```powershell
-claude-acc add thu2 --url-only
-```
-
-Ghi lại: trình duyệt có **không** mở ra không, và URL đăng nhập có nằm sẵn trong
-clipboard không (thử Ctrl+V vào Notepad). Ctrl+C để huỷ.
-
-## 6. Đổi tài khoản toàn cục
+**3c. Đổi tài khoản:**
 
 ```powershell
 claude-acc switch thu
@@ -110,89 +80,27 @@ claude -p "say hi"
 claude-acc switch main
 ```
 
-**Đúng là:**
-- `switch thu` kết thúc bằng `✓ thu dùng được`.
-- `claude -p` trả lời bình thường.
-- Mở `%USERPROFILE%\.claude\settings.json`: khi đang ở `thu` thì có khối `env` chứa
-  `CLAUDE_ACC_NAME: thu`, và sau `switch main` thì khối đó biến mất.
+**Đúng là:** `switch thu` kết thúc bằng `✓ thu works`, `claude -p` trả lời bình thường.
+Nếu có Cursor/VS Code với extension Claude Code: trong lúc đang `switch thu`, gửi một tin nhắn
+trong khung chat — nó phải chạy bằng tài khoản `thu`, không cần Reload Window.
 
-Nếu có Cursor hoặc VS Code với extension Claude Code: khi đang `switch thu`, gửi một tin
-nhắn trong khung chat để xem nó có chạy bằng tài khoản `thu` không (không cần Reload
-Window).
-
-## 7. Ghim theo repo
-
-Trong một repo git bất kỳ:
-
-```powershell
-cd C:\duong-dan\toi\mot-repo
-claude-acc switch thu --here
-claude-acc ls
-git status
-claude-acc switch off --here
-```
-
-**Đúng là:**
-- Có file `.claude\settings.local.json` trong repo.
-- `ls` có dòng `TẠI ĐÂY  thu`.
-- `git status` **không** liệt kê file đó (nó đã được thêm vào `.git\info\exclude`).
-- Sau `off`, khối `env` trong file đó biến mất.
-
-Nếu có một workspace nhiều folder (file `.code-workspace`): đứng trong một folder **không
-phải** folder đầu tiên và chạy `claude-acc switch thu --here --all`. **Đúng là:** mọi folder
-đều có `.claude\settings.local.json` riêng, và `ls` gom chúng lại dưới folder đầu tiên.
-
-## 8. ⚠️ Chạy một lần bằng tài khoản khác
-
-```powershell
-claude-acc run thu
-```
-
-Trong phiên claude vừa mở: gửi một câu hỏi dài, rồi nhấn **Ctrl+C** khi nó đang trả lời.
-Sau đó gõ `/exit`.
-
-**Đúng là:** Ctrl+C chỉ dừng câu trả lời, claude vẫn mở. Thoát xong thì quay lại dấu nhắc
-PowerShell bình thường, gõ phím vẫn hiện chữ. Nếu terminal bị loạn (hai thứ cùng giành
-bàn phím, chữ không hiện), hãy ghi lại.
-
-## 9. Biến môi trường cho riêng phiên này
-
-```powershell
-claude-acc env thu | Invoke-Expression
-$env:CLAUDE_CODE_OAUTH_TOKEN.Substring(0, 14)
-claude-acc env main | Invoke-Expression
-```
-
-**Đúng là:** dòng giữa in `sk-ant-oat01-…`, và lệnh cuối xoá biến đó mà không báo lỗi.
-
-## 10. ⚠️ Đăng nhập lại main — làm cuối cùng
-
-Bước này **ghi đè** đăng nhập main hiện tại. Chỉ làm khi sẵn sàng đăng nhập lại main.
+**3d. Đăng nhập lại main — tuỳ chọn, làm cuối cùng.** Lệnh này **ghi đè** đăng nhập main.
 
 ```powershell
 claude-acc login
 ```
 
-Ghi lại từng điểm:
-- Trình duyệt có tự mở không?
-- Nếu trình duyệt hiện **code**: bấm nút **Copy** trên trang. claude-acc có tự in
-  `✓ đã lấy code từ clipboard` rồi đăng nhập xong không?
-- Nếu không tự điền: dán code vào terminal. **Chữ có hiện ra khi dán không?** Enter có
-  đăng nhập được không?
-- Cuối cùng có `✓ main dùng được` không?
+Ghi lại: trình duyệt có mở không; nếu trang hiện code, bấm **Copy** trên trang — claude-acc có
+tự in `✓ picked up the code from the clipboard` rồi đăng nhập xong không; nếu dán tay thì chữ
+có hiện ra không; cuối cùng có `✓ main works` không.
 
-## 11. Dọn dẹp
+**3e. Dọn:**
 
 ```powershell
 claude-acc rm thu
-claude-acc uninstall
 ```
-
-Ở câu hỏi `[y/N]` của `uninstall`, nhấn **Enter** (tức là không xoá). **Đúng là:** in
-`đã hủy.`. Nếu muốn gỡ thật thì trả lời `y`.
 
 ## Gửi lại
 
-- Danh sách số bước và kết quả: ✓ (đúng như mô tả), hoặc ✗ kèm ảnh/chữ.
-- Đặc biệt là bước 5, 8 và 10.
-- Thông tin ở mục 0: phiên bản Windows, `claude --version`, terminal đang dùng.
+1. Toàn bộ output của bước 1.
+2. Bước nào ở mục 3 khác với mô tả, kèm ảnh hoặc chữ.

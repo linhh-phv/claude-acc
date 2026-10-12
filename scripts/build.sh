@@ -13,4 +13,10 @@ for target in darwin/arm64 darwin/amd64 windows/amd64 windows/arm64; do
   GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$out" ./cmd/claude-acc
   printf '%s\n' "$out"
 done
+# The Windows self-test: run it on a Windows machine next to claude-acc.exe.
+for arch in amd64 arm64; do
+  out="dist/claude-acc-selftest-windows-$arch.exe"
+  GOOS=windows GOARCH="$arch" CGO_ENABLED=0 go test -c -trimpath -o "$out" ./internal/wintest
+  printf '%s\n' "$out"
+done
 (cd dist && shasum -a 256 claude-acc-* > SHA256SUMS)

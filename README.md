@@ -374,12 +374,19 @@ The Windows build does everything the macOS one does, with these differences:
 | `--here --all` | one file, symlinked into every folder | every folder gets its own copy, registered, so later `switch --here` / `reassign` / `sync` keep them in step |
 | `env` | `eval "$(claude-acc env work)"` | `claude-acc env work \| Invoke-Expression` |
 
-**It has not been run on a real Windows machine yet.** It builds, and everything that is
-not Windows-specific is the same code the macOS tests cover, but three things are
-unmeasured: whether Claude Code on Windows honours `BROWSER` (which `--browser`,
-`--url-only` and the login code auto-fill rely on), whether `claude auth login` hides typed
-input there as it does on macOS, and how Ctrl+C behaves inside `claude-acc run`.
-[docs/windows-testing.md](docs/windows-testing.md) is the checklist for whoever tests it.
+How Claude Code itself behaves on Windows was read from its Windows build (2.1.296), not
+assumed: it opens the login URL through `BROWSER` when set (spawned directly, no shell),
+reads the login code line by line from stdin, and keeps main's credential either in
+`.credentials.json` or — when its `tengu_windows_credman` flag is on — in Credential Manager
+(`Claude Code-credentials/claude-code-user`), deleting the file. claude-acc reads both, in the
+same order Claude Code does.
+
+**Before handing it to someone, run the self-test on their machine.**
+`claude-acc-selftest-windows-amd64.exe` (built by `./scripts/build.sh`) checks every command
+there — interactive ones inside a real Windows console — against a temporary profile and a fake
+`claude`, and, if Claude Code is installed, confirms the `BROWSER` and login-code behaviour with
+the real `claude.exe` without signing in. [docs/windows-testing.md](docs/windows-testing.md) has
+the steps.
 
 ## Why the account's token ends up as plaintext in a JSON file
 
@@ -416,13 +423,15 @@ internal/secret/     Keychain (macOS) / Credential Manager (Windows)
 internal/pyjson/     JSON that round-trips exactly like the Python json.dump 1.x used
 internal/i18n/       every message, in English and Vietnamese (+ Windows wording)
 internal/parity/     runs legacy/claude-acc.bash and the Go binary side by side
+internal/wintest/    the Windows self-test (built into an .exe, run on a Windows machine)
 legacy/              the 1.x bash script, kept only as the parity reference
 scripts/build.sh     cross-compiles release binaries into dist/
 ```
 
 ```bash
 go test ./...          # the parity suite needs macOS and python3 (for the 1.x reference)
-./scripts/build.sh     # dist/claude-acc-{darwin,windows}-{arm64,amd64}[.exe] + SHA256SUMS
+./scripts/build.sh     # dist/claude-acc-{darwin,windows}-{arm64,amd64}[.exe], the Windows
+                       # self-test .exe, and SHA256SUMS
 ```
 
 `internal/parity` runs 100 scenarios plus an upgrade test — every command, in both languages, interactive ones
