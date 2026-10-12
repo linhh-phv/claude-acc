@@ -19,4 +19,13 @@ for arch in amd64 arm64; do
   GOOS=windows GOARCH="$arch" CGO_ENABLED=0 go test -c -trimpath -o "$out" ./internal/wintest
   printf '%s\n' "$out"
 done
+# What to hand a Windows user: unzip, double-click install.cmd.
+for arch in amd64 arm64; do
+  stage="$(mktemp -d)"
+  cp "dist/claude-acc-windows-$arch.exe" install.ps1 install.cmd "$stage/"
+  cp docs/windows-vi.md "$stage/HUONG-DAN.md"
+  (cd "$stage" && zip -q -X "$OLDPWD/dist/claude-acc-windows-$arch.zip" ./*)
+  rm -rf "$stage"
+  printf '%s\n' "dist/claude-acc-windows-$arch.zip"
+done
 (cd dist && shasum -a 256 claude-acc-* > SHA256SUMS)

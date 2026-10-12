@@ -28,13 +28,13 @@ macOS:
 curl -fsSL https://raw.githubusercontent.com/linhh-phv/claude-acc/main/install.sh | bash
 ```
 
-Windows (PowerShell):
+Windows (PowerShell) — or see [Windows: step by step](#windows-step-by-step):
 
 ```powershell
 irm https://raw.githubusercontent.com/linhh-phv/claude-acc/main/install.ps1 | iex
 ```
 
-Both download the binary for your CPU from the latest
+The one-liners download the binary for your CPU from the latest
 [release](https://github.com/linhh-phv/claude-acc/releases) into `~/.local/bin`
 (`%USERPROFILE%\.local\bin` on Windows — where the Claude Code installer puts `claude.exe`).
 Make sure that folder is on your `PATH`; `install.ps1` adds it for you.
@@ -47,6 +47,62 @@ cd claude-acc && ./install.sh          # builds and installs ~/.local/bin/claude
 ```
 
 On Windows with a binary you were handed: `.\install.ps1 -From .\claude-acc-windows-amd64.exe`.
+
+### Windows: step by step
+
+*Tiếng Việt: [docs/windows-vi.md](docs/windows-vi.md).*
+
+You need Windows 10 or 11 and Claude Code installed **and signed in** (`claude` runs in
+PowerShell). That signed-in account is **main**.
+
+**1. Install (once).** Open PowerShell (Start menu → type `PowerShell` → Enter) and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/linhh-phv/claude-acc/main/install.ps1 | iex
+```
+
+Then open a **new** PowerShell window and check:
+
+```powershell
+claude-acc version        # claude-acc 2.0.0
+```
+
+Rather not paste a command? Download `claude-acc-windows-amd64.zip` (`…-arm64.zip` on an ARM
+PC) from the [latest release](https://github.com/linhh-phv/claude-acc/releases/latest), unzip
+it and double-click **`install.cmd`**. If Windows says *"Windows protected your PC"*, click
+**More info → Run anyway**.
+
+**2. Add an account (once per account).**
+
+```powershell
+claude-acc add work
+```
+
+1. The browser opens. Sign in to **the account you are adding**. If the browser is signed in
+   to a different one, run `claude-acc add work --url-only` instead and paste the copied link
+   into a private window (Ctrl+Shift+N).
+2. Enter the one-time code sent to that account's email, then click **Authorize**.
+3. The terminal prints a token — a long string starting with `sk-ant-oat01-`.
+   **Select all of it and press Ctrl+C.**
+4. When claude-acc asks for the token, **just press Enter** (it reads the clipboard).
+5. `✓ "work" is ready.` — done.
+
+**3. Every day.**
+
+| You want | Run |
+|---|---|
+| Use `work` everywhere (terminal and Cursor/VS Code) | `claude-acc switch work` |
+| Back to your main account | `claude-acc switch main` |
+| Only the repo you are in on `work` | `cd <repo>` then `claude-acc switch work --here` |
+| Drop that repo's own account | `claude-acc switch off --here` |
+| Which account is in effect, and where | `claude-acc ls` |
+| How much each account has left | `claude-acc usage` |
+| Messages in Vietnamese | `claude-acc lang vi` |
+
+A switch takes effect on the next request — no Reload Window, no new chat tab.
+
+**Something wrong?** Send a screenshot (or the copied text of the PowerShell window) with the
+output of `claude-acc version` and `claude --version` to whoever gave you claude-acc.
 
 ### Upgrading from 1.x (the bash version)
 
@@ -384,12 +440,11 @@ reads the login code line by line from stdin, and keeps main's credential either
 (`Claude Code-credentials/claude-code-user`), deleting the file. claude-acc reads both, in the
 same order Claude Code does.
 
-**Before handing it to someone, run the self-test on their machine.**
-`claude-acc-selftest-windows-amd64.exe` (built by `./scripts/build.sh`) checks every command
-there — interactive ones inside a real Windows console — against a temporary profile and a fake
-`claude`, and, if Claude Code is installed, confirms the `BROWSER` and login-code behaviour with
-the real `claude.exe` without signing in. [docs/windows-testing.md](docs/windows-testing.md) has
-the steps.
+For whoever maintains it: `claude-acc-selftest-windows-amd64.exe` (built by
+`./scripts/build.sh`, not shipped in the zip) runs every command on a Windows machine —
+interactive ones inside a real Windows console — against a temporary profile and a fake
+`claude`, without touching real accounts. Useful when someone reports a problem:
+`.\claude-acc-selftest-windows-amd64.exe -bin .\claude-acc-windows-amd64.exe`.
 
 ## Why the account's token ends up as plaintext in a JSON file
 
