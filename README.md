@@ -373,6 +373,9 @@ The Windows build does everything the macOS one does, with these differences:
 | `add`: reading the token back | automatic | copy it once when `setup-token` prints it, then press Enter |
 | `--here --all` | one file, symlinked into every folder | every folder gets its own copy, registered, so later `switch --here` / `reassign` / `sync` keep them in step |
 | `env` | `eval "$(claude-acc env work)"` | `claude-acc env work \| Invoke-Expression` |
+| claude-acc's own files | `~/.config/claude-acc` | `%LOCALAPPDATA%\claude-acc` |
+| A pin file holding a token | mode 600 | an access list of its own: you and SYSTEM only |
+| Claude Code installed with npm | — | the `claude.exe` behind npm's `claude.cmd` is run directly, so arguments are never re-parsed by `cmd.exe` |
 
 How Claude Code itself behaves on Windows was read from its Windows build (2.1.296), not
 assumed: it opens the login URL through `BROWSER` when set (spawned directly, no shell),

@@ -3,11 +3,11 @@
 package app
 
 import (
-	"os/exec"
 	"regexp"
 	"strings"
 	"syscall"
 
+	"github.com/linhh-phv/claude-acc/internal/claudebin"
 	"github.com/linhh-phv/claude-acc/internal/i18n"
 	"github.com/linhh-phv/claude-acc/internal/ui"
 )
@@ -18,7 +18,7 @@ const useSymlinks = true
 // execClaude replaces this process with claude, like `exec` in a shell, so
 // signals and the terminal belong to claude alone.
 func execClaude(env []string, args []string) int {
-	path, err := exec.LookPath("claude")
+	path, err := claudebin.Path()
 	if err != nil {
 		ui.Die(i18n.T("err_no_claude"))
 	}
@@ -43,3 +43,12 @@ func exportLine(tok string) string { return "export " + envToken + "=" + shQuote
 
 // settingsLabel is how `ls` names the global settings file.
 func settingsLabel() string { return "~/.claude/settings.json" }
+
+// homeLabel shortens a path under home to ~ (a plain prefix test, as the
+// bash version did).
+func homeLabel(p, home string) string {
+	if home != "" && strings.HasPrefix(p, home) {
+		return "~" + p[len(home):]
+	}
+	return p
+}

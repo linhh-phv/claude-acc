@@ -114,6 +114,7 @@ func cmdRm(args []string) int {
 		ui.Die(i18n.T("usage_rm"))
 	}
 	validName(name)
+	refuseCaseClash(name)
 	if secret.Delete(name) != nil {
 		ui.Info(ui.Yellow + i18n.Tp("rm_notfound", name) + ui.Reset)
 	}

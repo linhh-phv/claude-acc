@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"runtime"
 
+	"github.com/linhh-phv/claude-acc/internal/claudebin"
 	"github.com/linhh-phv/claude-acc/internal/i18n"
 	"github.com/linhh-phv/claude-acc/internal/ui"
 )
@@ -37,7 +38,7 @@ func Run(args []string) int {
 	if !supported() {
 		ui.Die(i18n.T("err_macos"))
 	}
-	if _, err := exec.LookPath("claude"); err != nil {
+	if _, err := claudebin.Path(); err != nil {
 		ui.Die(i18n.T("err_no_claude"))
 	}
 	ensureFiles()
@@ -119,7 +120,8 @@ func toStderr(f func() int) int {
 // claudeCmd prepares `claude args...` wired to the terminal (stdout follows
 // ui.Stdout).
 func claudeCmd(env []string, args ...string) *exec.Cmd {
-	c := exec.Command("claude", args...)
+	path, _ := claudebin.Path()
+	c := exec.Command(path, args...)
 	c.Env = env
 	c.Stdin = os.Stdin
 	c.Stdout = ui.Stdout

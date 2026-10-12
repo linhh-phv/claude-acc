@@ -14,13 +14,16 @@ func run(dir string, args ...string) (string, bool) {
 	return strings.TrimRight(string(out), "\r\n"), err == nil
 }
 
-// Toplevel is the root of the work tree containing dir.
+// Toplevel is the root of the work tree containing dir, spelled from dir:
+// `--show-cdup` (the ../ to climb) rather than `--show-toplevel`, whose path
+// git resolves its own way — through junctions, subst and mapped drives on
+// Windows — and so could not be compared with paths claude-acc builds.
 func Toplevel(dir string) (string, bool) {
-	top, ok := run(dir, "rev-parse", "--show-toplevel")
-	if !ok || top == "" {
+	up, ok := run(dir, "rev-parse", "--show-cdup")
+	if !ok {
 		return "", false
 	}
-	return filepath.FromSlash(top), true
+	return filepath.Clean(filepath.Join(dir, filepath.FromSlash(up))), true
 }
 
 // IsRepo reports whether dir is inside a git repository.

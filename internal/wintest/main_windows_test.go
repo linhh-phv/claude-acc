@@ -215,8 +215,12 @@ func fakeClaude(args []string) int {
 		browser(loginURL)
 		if t := os.Getenv("FAKE_SETUP_TOKEN"); t != "" {
 			fmt.Printf("\n  Your OAuth token (valid for 1 year):\n\n  %s\n\n  Store this token securely.\n", t)
-			if os.Getenv("FAKE_SETUP_COPY") == "1" {
+			switch os.Getenv("FAKE_SETUP_COPY") {
+			case "1":
 				clip.Write(t)
+			case "wrap":
+				// what a copy of a token Ink wrapped in a narrow window holds
+				clip.Write(" " + t[:20] + "\r\n " + t[20:] + "\r\n")
 			}
 		}
 		return 0
@@ -299,7 +303,7 @@ func newSandbox(t *testing.T) *sandbox {
 }
 
 // dropped: variables of the real machine that must not leak into a run.
-var dropped = []string{"USERPROFILE", "HOME", "APPDATA", "XDG_CONFIG_HOME", "BROWSER", "LANG", "LC_ALL",
+var dropped = []string{"USERPROFILE", "HOME", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "BROWSER", "LANG", "LC_ALL",
 	"LC_MESSAGES", "PATH", "TEMP", "TMP"}
 
 func (s *sandbox) environ(fake bool) []string {
@@ -336,7 +340,7 @@ func (s *sandbox) environ(fake bool) []string {
 		set(fakeEnv, "1")
 	}
 	for _, kv := range [][2]string{
-		{"PATH", path}, {"USERPROFILE", s.home}, {"HOME", s.home}, {"APPDATA", s.appdata},
+		{"PATH", path}, {"USERPROFILE", s.home}, {"HOME", s.home}, {"APPDATA", s.appdata}, {"LOCALAPPDATA", s.appdata},
 		{"TEMP", s.tmp}, {"TMP", s.tmp}, {"LANG", "en_US.UTF-8"},
 		{"CLAUDE_ACC_API_URL", api.URL}, {"CLAUDE_ACC_SECRET_SERVICE", testService},
 		{"FAKE_LOG", filepath.Join(s.tmp, "claude.log")},

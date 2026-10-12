@@ -1,9 +1,14 @@
+// Package signin drives Claude Code's two browser sign-in flows:
+// `claude setup-token` (mints a secondary account's token) and
+// `claude auth login` (signs in main).
 package signin
 
 import (
 	"os"
 	"os/exec"
 	"os/signal"
+
+	"github.com/linhh-phv/claude-acc/internal/claudebin"
 )
 
 // SetupToken runs `claude setup-token` in the user's terminal and returns
@@ -23,7 +28,8 @@ func plainSetupToken(env []string) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	defer signal.Stop(sig)
-	c := exec.Command("claude", "setup-token")
+	path, _ := claudebin.Path()
+	c := exec.Command(path, "setup-token")
 	c.Env = env
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	c.Run()

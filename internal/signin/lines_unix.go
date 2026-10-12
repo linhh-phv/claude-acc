@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/linhh-phv/claude-acc/internal/tty"
 	"golang.org/x/sys/unix"
 )
 
@@ -53,6 +54,6 @@ func (s *lineSource) close() {
 	if s.fd < 0 {
 		return
 	}
-	flushInput(s.fd)
+	tty.FlushFd(s.fd)
 	unix.Close(s.fd)
 }

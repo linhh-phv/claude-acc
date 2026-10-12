@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/linhh-phv/claude-acc/internal/claudebin"
+	"github.com/linhh-phv/claude-acc/internal/fsx"
 	"github.com/linhh-phv/claude-acc/internal/i18n"
 	"github.com/linhh-phv/claude-acc/internal/ui"
 )
@@ -26,7 +28,11 @@ func execClaude(env []string, args []string) int {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	defer signal.Stop(sig)
-	c := exec.Command("claude", args...)
+	path, err := claudebin.Path()
+	if err != nil {
+		ui.Die(i18n.T("err_no_claude"))
+	}
+	c := exec.Command(path, args...)
 	c.Env = env
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := c.Run(); err != nil {
@@ -49,3 +55,12 @@ func exportLine(tok string) string { return "$env:" + envToken + " = " + psQuote
 
 // settingsLabel is how `ls` names the global settings file.
 func settingsLabel() string { return `%USERPROFILE%\.claude\settings.json` }
+
+// homeLabel shortens a path under the profile folder to ~ (PowerShell reads
+// it), matching case-insensitively and only at a folder boundary.
+func homeLabel(p, home string) string {
+	if home != "" && fsx.Within(p, home) && !fsx.SamePath(p, home) {
+		return "~" + p[len(home):]
+	}
+	return p
+}

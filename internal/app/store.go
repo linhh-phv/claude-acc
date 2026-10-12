@@ -17,7 +17,7 @@ import (
 // Files claude-acc keeps. Same names and formats as the bash version, so an
 // existing setup carries over untouched.
 var (
-	cfgDir     string // ${XDG_CONFIG_HOME:-~/.config}/claude-acc (%APPDATA% on Windows)
+	cfgDir     string // ${XDG_CONFIG_HOME:-~/.config}/claude-acc (%LOCALAPPDATA% on Windows)
 	listFile   string // one account name per line
 	reposFile  string // registry of pinned directories: <path>\t<account>
 	langFile   string // "vi" or "en" when chosen by hand
@@ -31,7 +31,11 @@ func setupPaths() {
 	if base == "" {
 		base = filepath.Join(home, ".config")
 		if runtime.GOOS == "windows" {
-			if ad := os.Getenv("APPDATA"); ad != "" {
+			// Local, not roaming: the registry lists this machine's paths, and
+			// on a roaming profile another PC's `sync` would drop them as gone.
+			if ad := os.Getenv("LOCALAPPDATA"); ad != "" {
+				base = ad
+			} else if ad := os.Getenv("APPDATA"); ad != "" {
 				base = ad
 			}
 		}
@@ -178,7 +182,7 @@ func regSet(path, acc string) {
 		if strings.TrimSpace(ln) == "" {
 			continue
 		}
-		if p, _, _ := strings.Cut(ln, "\t"); p != path {
+		if p, _, _ := strings.Cut(ln, "\t"); !fsx.SamePath(p, path) {
 			rows = append(rows, ln)
 		}
 	}
@@ -196,7 +200,7 @@ func regDel(path string) {
 		if strings.TrimSpace(ln) == "" {
 			continue
 		}
-		if p, _, _ := strings.Cut(ln, "\t"); p != path {
+		if p, _, _ := strings.Cut(ln, "\t"); !fsx.SamePath(p, path) {
 			rows = append(rows, ln)
 		}
 	}

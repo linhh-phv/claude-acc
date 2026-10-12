@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/linhh-phv/claude-acc/internal/claudebin"
 	"github.com/linhh-phv/claude-acc/internal/pyjson"
 )
 
@@ -65,7 +66,11 @@ func Refresh() {
 	if err := os.WriteFile(f, []byte(`{"env":{"CLAUDE_CODE_OAUTH_TOKEN":""}}`), 0o600); err != nil {
 		return
 	}
-	cmd := exec.Command("claude", "-p", "hi", "--model", "haiku")
+	claude, err := claudebin.Path()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(claude, "-p", "hi", "--model", "haiku")
 	cmd.Dir = d
 	cmd.Env = WithoutToken(os.Environ())
 	cmd.Run()

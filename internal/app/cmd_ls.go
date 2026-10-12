@@ -231,10 +231,7 @@ func listPins(cwd string) {
 		if rd == rcwd || (cwdRoot != "" && rd == cwdRoot) {
 			mark = "*"
 		}
-		label := r.d
-		if home != "" && strings.HasPrefix(r.d, home) {
-			label = "~" + r.d[len(home):]
-		}
+		label := homeLabel(r.d, home)
 		if !fsx.IsDir(r.d) {
 			fmt.Fprintf(w, "  %s %s %s %s(%s)%s\n", mark, padRight(r.a, 8), label, D, i18n.T("ls_dir_gone"), Z)
 			continue

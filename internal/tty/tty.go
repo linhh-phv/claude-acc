@@ -35,5 +35,9 @@ func ReadSecret() (string, error) {
 	}
 	defer f.Close()
 	b, err := term.ReadPassword(int(f.Fd()))
+	// A paste of several lines returns at the first line break; the rest
+	// would stay queued and the shell would run it — a piece of a token in
+	// the command history. Drop it.
+	flush(f)
 	return string(b), err
 }
