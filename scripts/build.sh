@@ -28,4 +28,5 @@ for arch in amd64 arm64; do
   rm -rf "$stage"
   printf '%s\n' "dist/claude-acc-windows-$arch.zip"
 done
-(cd dist && shasum -a 256 claude-acc-* > SHA256SUMS)
+# Checksums of what a release ships (the self-test is not shipped).
+(cd dist && shasum -a 256 claude-acc-darwin-* claude-acc-windows-* > SHA256SUMS)
