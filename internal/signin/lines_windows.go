@@ -54,10 +54,13 @@ func (s *lineSource) poll(d time.Duration) []string {
 	}
 }
 
-// close drops typed-but-unread input, so it does not land in the shell.
+// close drops typed-but-unread input, so it does not land in the shell, and
+// cancels the read still waiting in the goroutine — left there, it would eat
+// the first line of any later prompt.
 func (s *lineSource) close() {
 	if s.h == windows.InvalidHandle {
 		return
 	}
+	windows.CancelIoEx(s.h, nil)
 	windows.FlushConsoleInputBuffer(s.h)
 }

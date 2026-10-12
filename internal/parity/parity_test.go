@@ -375,7 +375,24 @@ var scenarios = []scenario{
 	{name: "add-stdin-new", lang: "vi_VN.UTF-8", args: []string{"add", "new-acc", "--stdin", "--no-setup"}, stdin: "sk-ant-oat01-GOODtoken_ABC-123\n",
 		setup: func(s *sandbox) string { std(s); return s.w }},
 	{name: "add-stdin-bad-token", args: []string{"add", "x", "--no-setup", "--stdin"}, stdin: "sk-ant-oat01-NOPE\n",
-		setup: func(s *sandbox) string { std(s); return s.w }},
+		setup: func(s *sandbox) string { std(s); return s.w }, fix: badTokenNotSaved},
+	{name: "re-add-bad-token-keeps-good", args: []string{"add", "work", "--no-setup", "--stdin"}, stdin: "sk-ant-oat01-NOPE\n",
+		setup: func(s *sandbox) string {
+			std(s)
+			r := s.repo("r1")
+			pin(s, r, "work", "tok-work")
+			s.registry(r + "\twork")
+			return s.w
+		},
+		fix: func(b, g *result) {
+			// bash replaced a working token with the broken one, in the store
+			// and in every pin; Go checks first and keeps the working one.
+			if strings.Contains(b.files["kc/claude-code-token@work"], "NOPE") &&
+				strings.Contains(g.files["kc/claude-code-token@work"], "tok-work") &&
+				strings.Contains(g.files["w/r1/.claude/settings.local.json"], "tok-work") {
+				*b = *g
+			}
+		}},
 	{name: "add-not-a-token", args: []string{"add", "x", "--no-setup", "--stdin"}, stdin: "abc#def\n",
 		setup: func(s *sandbox) string { std(s); return s.w },
 		fix: func(b, g *result) {
@@ -419,6 +436,15 @@ var (
 	// line; the Go version prints only that line.
 	traceback = regexp.MustCompile(`(?s)Traceback \(most recent call last\):\n.*?\n[A-Za-z_][\w.]*(Error|Exception)[^\n]*\n`)
 )
+
+// badTokenNotSaved: Go probes a token BEFORE storing it; bash stored it,
+// then reported it broken.
+func badTokenNotSaved(b, g *result) {
+	if b.code == 1 && g.code == 1 && strings.Contains(g.stderr, "nothing was saved") &&
+		b.files["kc/claude-code-token@x"] != "" && g.files["kc/claude-code-token@x"] == "" {
+		*b = *g
+	}
+}
 
 // noConfigForHelp: help no longer creates the (empty) config files.
 func noConfigForHelp(b, g *result) {

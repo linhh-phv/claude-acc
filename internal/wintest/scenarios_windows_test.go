@@ -255,6 +255,85 @@ func TestLanguage(t *testing.T) {
 	t.Logf("with no LANG set this machine picks: %s", strings.TrimSpace(s.ok(s.w, "", "lang").stderr))
 }
 
+func TestBadTokenIsNotSaved(t *testing.T) {
+	s := newSandbox(t)
+	s.addAccount("work", tokWork)
+	r := s.run(s.w, "sk-ant-oat01-NOPE\n", "add", "work", "--no-setup", "--stdin")
+	if r.code != 1 {
+		t.Fatalf("a token the API rejects must fail; exit %d", r.code)
+	}
+	want(t, r.stderr, "nothing was saved")
+	if got := stored(t, "work"); got != tokWork {
+		t.Fatalf("the working token was replaced by %q", got)
+	}
+}
+
+func TestPipedTokenSkipsSetup(t *testing.T) {
+	s := newSandbox(t)
+	r := s.ok(s.w, "  "+tokWork+"\r\n", "add", "piped", "--stdin")
+	want(t, r.stderr, `"piped" is ready`)
+	wantNot(t, s.claudeLog(), "setup-token")
+}
+
+func TestCaseClash(t *testing.T) {
+	s := newSandbox(t)
+	s.addAccount("work", tokWork)
+	r := s.run(s.w, tokPlay+"\n", "add", "Work", "--no-setup", "--stdin")
+	if r.code != 1 {
+		t.Fatalf("add Work next to work should be refused; exit %d", r.code)
+	}
+	want(t, r.stderr, "ignore case")
+	if s.run(s.w, "", "rm", "WORK").code != 1 {
+		t.Fatal("rm WORK next to work should be refused")
+	}
+	if got := stored(t, "work"); got != tokWork {
+		t.Fatalf("work's token changed to %q", got)
+	}
+}
+
+func TestUnknownBrowserWarns(t *testing.T) {
+	s := newSandbox(t)
+	r := s.ok(s.w, tokWork+"\n", "add", "work", "--browser", "nosuchbrowser", "--no-setup", "--stdin")
+	want(t, r.stderr, `no browser "nosuchbrowser" found`)
+}
+
+// npm installs claude.cmd; claude-acc must run the claude.exe behind it, or
+// cmd.exe would expand %VARS% and split arguments on &.
+func TestNpmShim(t *testing.T) {
+	s := newSandbox(t)
+	s.addAccount("work", tokWork)
+	npm := filepath.Join(s.root, "npm")
+	exe := filepath.Join(npm, "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe")
+	os.MkdirAll(filepath.Dir(exe), 0o755)
+	if err := copyFile(filepath.Join(fakeBinDir, "claude.exe"), exe); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(npm, "claude.cmd"), []byte("@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe\"   %*\r\n"), 0o644)
+	s.env["PATH"] = npm + ";" + origPath
+	s.ok(s.w, "", "run", "work", "--", "-p", "a&b", "%PATH%", `q"x`)
+	want(t, s.claudeLog(), `-p a&b %PATH% q"x | tok=`+tokWork)
+}
+
+func TestTokenFilesArePrivate(t *testing.T) {
+	needGit(t)
+	s := newSandbox(t)
+	s.addAccount("work", tokWork)
+	s.ok(s.w, "", "switch", "work")
+	r1 := filepath.Join(s.w, "r1")
+	gitInit(t, r1)
+	s.ok(r1, "", "here", "work", "--no-check")
+	for _, f := range []string{filepath.Join(s.home, ".claude", "settings.json"), filepath.Join(r1, ".claude", "settings.local.json")} {
+		sd, err := windows.GetNamedSecurityInfo(f, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		sddl := sd.String()
+		if !strings.Contains(sddl, "D:P") || strings.Count(sddl, "(A;") != 2 || !strings.Contains(sddl, ";;;SY)") {
+			t.Fatalf("%s: want a protected access list for this user and SYSTEM only, got %s", f, sddl)
+		}
+	}
+}
+
 // ---------- B. interactive, in a pseudo-console -------------------------------
 
 func TestInteractiveAddTypedToken(t *testing.T) {
@@ -285,6 +364,20 @@ func TestInteractiveAddFromClipboard(t *testing.T) {
 	c.wait(30 * time.Second)
 	if got := stored(t, "printed"); got != tokPrinted {
 		t.Fatalf("stored %q", got)
+	}
+}
+
+func TestInteractiveAddWrappedClipboard(t *testing.T) {
+	s := newSandbox(t)
+	s.env["FAKE_SETUP_TOKEN"] = tokPrinted
+	s.env["FAKE_SETUP_COPY"] = "wrap"
+	c := s.console(s.w, true, "add", "wrapped")
+	c.expect(`take it from the clipboard:`, 60*time.Second)
+	c.send("\r")
+	c.expect(`"wrapped" is ready`, 60*time.Second)
+	c.wait(30 * time.Second)
+	if got := stored(t, "wrapped"); got != tokPrinted {
+		t.Fatalf("a token copied across two lines was stored as %q", got)
 	}
 }
 

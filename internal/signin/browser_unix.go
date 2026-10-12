@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/linhh-phv/claude-acc/internal/clip"
@@ -56,4 +58,14 @@ func openURL(mode, url string) {
 	default:
 		exec.Command("open", "-a", mode, url).Run()
 	}
+}
+
+// BrowserMissing reports whether --browser names an app that is not in
+// /Applications (macOS).
+func BrowserMissing(name string) bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	st, err := os.Stat(filepath.Join("/Applications", name+".app"))
+	return err != nil || !st.IsDir()
 }

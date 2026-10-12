@@ -1,10 +1,9 @@
 package app
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -15,8 +14,10 @@ import (
 	"github.com/linhh-phv/claude-acc/internal/i18n"
 	"github.com/linhh-phv/claude-acc/internal/secret"
 	"github.com/linhh-phv/claude-acc/internal/signin"
+	"github.com/linhh-phv/claude-acc/internal/token"
 	"github.com/linhh-phv/claude-acc/internal/tty"
 	"github.com/linhh-phv/claude-acc/internal/ui"
+	"golang.org/x/term"
 )
 
 // cmdAdd adds a secondary account: runs `claude setup-token`, catches the
@@ -57,14 +58,17 @@ func cmdAdd(args []string) int {
 		ui.Die(i18n.T("usage_add"))
 	}
 	validName(name)
+	refuseCaseClash(name)
+	// A token piped in cannot also answer setup-token's prompts: piping
+	// means the token is already at hand.
+	if mode == "stdin" && !term.IsTerminal(int(os.Stdin.Fd())) {
+		runSetup = false
+	}
 
 	if secret.Has(name) {
 		ui.Info(ui.Yellow + i18n.Tp("add_overwrite", name) + ui.Reset)
 	}
-	if browser != "" && browser != signin.ModeClip && runtime.GOOS == "darwin" &&
-		!fsx.IsDir(filepath.Join("/Applications", browser+".app")) {
-		ui.Info(ui.Yellow + i18n.Tp("add_no_app", browser) + ui.Reset + i18n.T("add_no_app2"))
-	}
+	warnMissingBrowser(browser)
 
 	tok := ""
 	if runSetup {
@@ -110,8 +114,7 @@ func cmdAdd(args []string) int {
 			}
 			ui.Info(ui.Dim + i18n.Tp("add_from_clip", tok[:min(14, len(tok))], tok[max(0, len(tok)-4):], strconv.Itoa(len(tok))) + ui.Reset)
 		case "stdin":
-			line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-			tok = trim(line)
+			tok = tokenIn(readAll(os.Stdin))
 		default:
 			tok = readToken(name)
 		}
@@ -126,25 +129,32 @@ func cmdAdd(args []string) int {
 		return 1
 	}
 
+	// Straight to the API with this token, not through `claude`: the
+	// settings env block overrides the environment, so `claude` would test
+	// the PINNED account and call a broken token "ready" (it happened: a
+	// truncated token was reported as ready).
+	//
+	// And BEFORE storing it: re-adding an account spreads the new token to
+	// every place pinned to it, so a bad one stored first would replace a
+	// working token everywhere.
+	out, ok := api.Probe(tok)
+	if !ok {
+		if out != "" {
+			ui.Info(out)
+		}
+		ui.Info(ui.Red + "✗ " + i18n.T("add_bad_nosave") + ui.Reset)
+		ui.Info(i18n.Tp("add_bad2", name))
+		return 1
+	}
+
 	if secret.Set(name, tok) != nil {
 		ui.Die(i18n.T("err_keychain"))
 	}
 	remember(name)
 	resyncAcc(name, tok)
 	ui.Info(ui.Dim + i18n.Tp("add_saved", name) + ui.Reset)
-
-	// Straight to the API with the token just stored, not through `claude`:
-	// the settings env block overrides the environment, so `claude` would
-	// test the PINNED account and call a broken token "ready" (it happened:
-	// a truncated token was reported as ready).
-	out, ok := api.Probe(tok)
 	if out != "" {
 		ui.Info(out)
-	}
-	if !ok {
-		ui.Info(ui.Red + "✗ " + i18n.T("add_bad") + ui.Reset)
-		ui.Info(i18n.Tp("add_bad2", name))
-		return 1
 	}
 	ui.Info(ui.Green + "✓ " + i18n.Tp("add_ready", name) + ui.Reset + i18n.Tp("add_ready2", name))
 	return 0
@@ -157,7 +167,7 @@ func readToken(name string) string {
 	fmt.Fprintf(ui.Stderr, "%s%s%s%s\n> ", ui.Bold, i18n.Tp("tok_prompt", name), ui.Reset, i18n.T("tok_prompt2"))
 	raw, _ := tty.ReadSecret()
 	fmt.Fprintln(ui.Stderr)
-	raw = trim(raw)
+	raw = tokenIn(raw)
 	if raw == "" {
 		// ONLY an sk-ant-… string: an old code left on the clipboard used to
 		// be taken and then rejected as "not a token".
@@ -167,6 +177,41 @@ func readToken(name string) string {
 		ui.Info(ui.Dim + i18n.Tp("tok_got", raw[:min(14, len(raw))], raw[max(0, len(raw)-4):], strconv.Itoa(len(raw))) + ui.Reset)
 	}
 	return raw
+}
+
+func warnMissingBrowser(browser string) {
+	if browser != "" && browser != signin.ModeClip && signin.BrowserMissing(browser) {
+		ui.Info(ui.Yellow + i18n.Tp("add_no_app", browser) + ui.Reset + i18n.T("add_no_app2"))
+	}
+}
+
+// tokenIn takes the token out of what was typed, pasted or piped — rejoined
+// if the terminal broke it across lines. Text with no token in it comes back
+// trimmed, so a pasted login code still gets its own explanation.
+func tokenIn(s string) string {
+	if t := token.Extract(s); t != "" {
+		return t
+	}
+	line, _, _ := strings.Cut(strings.TrimLeft(s, "\r\n"), "\n")
+	return trim(line)
+}
+
+func readAll(r io.Reader) string {
+	b, _ := io.ReadAll(r)
+	return string(b)
+}
+
+// refuseCaseClash: on Windows, Credential Manager ignores case, so "Work"
+// and "work" would share — and overwrite — one token.
+func refuseCaseClash(name string) {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	for _, a := range accounts() {
+		if a != name && strings.EqualFold(a, name) {
+			ui.Die(i18n.Tp("err_case_clash", name, a, a))
+		}
+	}
 }
 
 // cmdLogin signs main in again through `claude auth login`.
@@ -190,6 +235,7 @@ func cmdLogin(args []string) int {
 		}
 	}
 
+	warnMissingBrowser(browser)
 	ui.Info(ui.Yellow + i18n.T("login_warn") + ui.Reset + i18n.T("login_warn2"))
 	ui.Info(i18n.T("login_warn3"))
 

@@ -19,7 +19,11 @@ func open() (*os.File, error) {
 	return os.NewFile(uintptr(h), "CONIN$"), nil
 }
 
-// Sane restores the usual line-input mode of the console.
+func flush(f *os.File) { windows.FlushConsoleInputBuffer(windows.Handle(f.Fd())) }
+
+// Sane restores the usual line-input mode of the console. VT input goes off
+// too: left on by a full-screen program, Backspace arrives as 0x7F and the
+// hidden token prompt would keep it as part of the token.
 func Sane() {
 	f, err := open()
 	if err != nil {
@@ -32,5 +36,6 @@ func Sane() {
 		return
 	}
 	mode |= windows.ENABLE_ECHO_INPUT | windows.ENABLE_LINE_INPUT | windows.ENABLE_PROCESSED_INPUT
+	mode &^= windows.ENABLE_VIRTUAL_TERMINAL_INPUT
 	windows.SetConsoleMode(h, mode)
 }

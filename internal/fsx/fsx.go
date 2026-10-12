@@ -63,6 +63,7 @@ func WritePrivate(path, tmpSuffix string, data []byte) error {
 	if err != nil {
 		return err
 	}
+	protect(tmp)
 	if _, err := f.Write(data); err != nil {
 		f.Close()
 		os.Remove(tmp)
@@ -85,10 +86,13 @@ func IsDir(p string) bool {
 	return err == nil && st.IsDir()
 }
 
-// IsFile reports whether p is an existing regular file (following symlinks).
+// IsFile reports whether p exists and is not a directory (following
+// symlinks). Not Mode().IsRegular(): since Go 1.23 a file OneDrive manages
+// (a reparse point) reports as irregular, and pins in a synced folder would
+// vanish.
 func IsFile(p string) bool {
 	st, err := os.Stat(p)
-	return err == nil && st.Mode().IsRegular()
+	return err == nil && !st.IsDir()
 }
 
 // Exists reports whether p exists (following symlinks).

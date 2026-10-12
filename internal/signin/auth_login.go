@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/linhh-phv/claude-acc/internal/claudebin"
 	"github.com/linhh-phv/claude-acc/internal/clip"
 )
 
@@ -41,7 +42,8 @@ var stateRe = regexp.MustCompile(`[?&]state=([^&\s]+)`)
 //
 // notice formats the line shown when a code is taken from the clipboard.
 func AuthLogin(env []string, urlFile string, notice func(code string) string) int {
-	c := exec.Command("claude", "auth", "login")
+	path, _ := claudebin.Path()
+	c := exec.Command(path, "auth", "login")
 	c.Env = env
 	c.Stdout, c.Stderr = os.Stdout, os.Stderr
 	stdin, err := c.StdinPipe()

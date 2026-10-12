@@ -216,11 +216,8 @@ func resolveTarget(base string) (dir, note string, err error) {
 	if kind == workspace.WS && root != "" {
 		return root, n, nil
 	}
-	if top, ok := gitx.Toplevel(base); ok {
-		// git's spelling of the path (forward slashes, an 8.3 short name or
-		// another letter case on Windows) is normalised like every other path
-		// claude-acc compares.
-		return fsx.RealPath(top), "", nil
+	if top, ok := gitx.Toplevel(fsx.RealPath(base)); ok {
+		return top, "", nil
 	}
 	return fsx.RealPath(base), "", nil
 }

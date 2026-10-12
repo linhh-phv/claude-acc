@@ -33,9 +33,18 @@ Move-Item -Force $tmp $dest
 Unblock-File -Path $dest -ErrorAction SilentlyContinue
 Write-Host "installed: $dest ($(& $dest version))" -ForegroundColor Green
 
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if (($userPath -split ";") -notcontains $binDir) {
-    [Environment]::SetEnvironmentVariable("Path", "$userPath;$binDir", "User")
+# Add the folder to the user PATH, keeping its %VARIABLES% unexpanded:
+# [Environment]::SetEnvironmentVariable would rewrite it as plain text.
+$key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Environment", $true)
+$raw = $key.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+$entries = @($raw -split ";" | Where-Object { $_ -ne "" })
+$present = $entries | Where-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd("\") -ieq $binDir.TrimEnd("\") }
+if (-not $present) {
+    $key.SetValue("Path", (($entries + $binDir) -join ";"), [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    # Tell running programs (Explorer, new terminals) that the environment changed.
+    [Environment]::SetEnvironmentVariable("CLAUDE_ACC_PATH_REFRESH", "1", "User")
+    [Environment]::SetEnvironmentVariable("CLAUDE_ACC_PATH_REFRESH", $null, "User")
     Write-Host "Added $binDir to your PATH - open a new terminal to use it." -ForegroundColor Yellow
 }
+$key.Close()
 Write-Host "Run 'claude-acc help' to get started."

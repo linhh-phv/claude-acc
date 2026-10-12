@@ -5,6 +5,9 @@ package signin
 import (
 	"os"
 	"os/exec"
+
+	"github.com/linhh-phv/claude-acc/internal/claudebin"
+	"github.com/linhh-phv/claude-acc/internal/token"
 )
 
 // setupToken goes through script(1). Unlike capturing stdout (tried before:
@@ -25,7 +28,8 @@ func setupToken(env []string) string {
 	f.Close()
 	defer os.Remove(log)
 
-	c := exec.Command("script", "-q", log, "claude", "setup-token")
+	path, _ := claudebin.Path()
+	c := exec.Command("script", "-q", log, path, "setup-token")
 	c.Env = env
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	c.Run()
@@ -34,5 +38,5 @@ func setupToken(env []string) string {
 	if err != nil {
 		return ""
 	}
-	return TokenFromTranscript(string(raw))
+	return token.Extract(string(raw))
 }

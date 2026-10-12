@@ -26,7 +26,7 @@ var helpEN string
 // variables, then (Windows only) the UI language, then English.
 func Detect(langFile string) string {
 	if b, err := os.ReadFile(langFile); err == nil && len(b) > 0 {
-		l := strings.NewReplacer(" ", "", "\n", "").Replace(string(b))
+		l := strings.NewReplacer(" ", "", "\n", "", "\r", "").Replace(string(b))
 		if l == "vi" || l == "en" {
 			return l
 		}
