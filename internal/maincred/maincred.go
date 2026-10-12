@@ -40,6 +40,10 @@ func AccessToken() (string, error) {
 	return tok, nil
 }
 
+// Where says where AccessToken would read main's credential from, for
+// diagnostics: "credential-manager", "file" or "keychain" (macOS).
+func Where() string { return where() }
+
 // credentialsFile is where Claude Code keeps the credential as a file:
 // <storage dir>\.credentials.json.
 func credentialsFile() string { return filepath.Join(storageDir(), ".credentials.json") }
