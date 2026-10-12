@@ -1,9 +1,8 @@
-//go:build !darwin
+//go:build !darwin && !windows
 
 package maincred
 
 import "os"
 
-// Outside macOS Claude Code keeps the credential in a file (docs:
-// %USERPROFILE%\.claude\.credentials.json on Windows).
+// Elsewhere (Linux) Claude Code keeps the credential in a file.
 func readRaw() ([]byte, error) { return os.ReadFile(credentialsFile()) }

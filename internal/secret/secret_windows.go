@@ -42,13 +42,26 @@ type credentialW struct {
 }
 
 func target(name string) *uint16 {
-	p, _ := windows.UTF16PtrFromString(Service + ":" + name)
+	p, _ := windows.UTF16PtrFromString(service() + ":" + name)
 	return p
 }
 
-func get(name string) (string, error) {
+func get(name string) (string, error) { return readTarget(target(name)) }
+
+// ReadTarget reads the generic credential named t — used for Claude Code's
+// own entry, which Bun.secrets writes as "<service>/<name>".
+func ReadTarget(t string) (string, bool) {
+	p, err := windows.UTF16PtrFromString(t)
+	if err != nil {
+		return "", false
+	}
+	v, err := readTarget(p)
+	return v, err == nil
+}
+
+func readTarget(t *uint16) (string, error) {
 	var pcred *credentialW
-	r, _, err := procCredRead.Call(uintptr(unsafe.Pointer(target(name))), credTypeGeneric, 0,
+	r, _, err := procCredRead.Call(uintptr(unsafe.Pointer(t)), credTypeGeneric, 0,
 		uintptr(unsafe.Pointer(&pcred)))
 	if r == 0 {
 		if errors.Is(err, windows.ERROR_NOT_FOUND) {
