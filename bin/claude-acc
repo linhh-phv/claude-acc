@@ -107,6 +107,8 @@ t_vi() {
     login_warn)     printf '%b' 'Lưu ý:' ;;
     login_warn2)    printf '%b' ' lệnh này GHI ĐÈ credential trong Keychain — acc "main" hiện tại' ;;
     login_warn3)    printf '%b' 'sẽ bị thay thế. Các acc phụ (dùng token) không bị ảnh hưởng.' ;;
+    login_note)     printf '%b' 'Nếu trình duyệt hiện code để dán: chỉ cần bấm Copy — claude-acc tự thấy trong\nclipboard và điền vào. Hoặc dán vào đây rồi Enter (chữ sẽ hiện ra như thường).' ;;
+    login_caught)   printf '%b' 'đã lấy code từ clipboard (%s…%s) — đang gửi cho claude…' ;;
     login_result)   printf '%b' 'Kết quả:' ;;
 
     usage_rm)       printf '%b' 'dùng: claude-acc rm <tên-acc>' ;;
@@ -153,7 +155,7 @@ t_vi() {
     chk_main_ok)    printf '%b' 'main dùng được' ;;
     chk_rate_limited) printf '%b' '— nhưng acc đang HẾT hạn mức, chờ tới giờ reset (xem: claude-acc usage)' ;;
     chk_main_bad)   printf '%b' 'main KHÔNG dùng được' ;;
-    chk_main_bad2)  printf '%b' ' — chạy: claude auth login' ;;
+    chk_main_bad2)  printf '%b' ' — chạy: claude-acc login' ;;
     chk_ok)         printf '%b' '%s dùng được' ;;
     chk_bad)        printf '%b' '%s KHÔNG dùng được' ;;
     chk_bad2)       printf '%b' ' — chạy lại: claude-acc add %s (chọn Y)' ;;
@@ -313,6 +315,8 @@ t_en() {
     login_warn)     printf '%b' 'Warning:' ;;
     login_warn2)    printf '%b' ' this OVERWRITES the Keychain credential — the current "main"' ;;
     login_warn3)    printf '%b' 'account is replaced. Token accounts are unaffected.' ;;
+    login_note)     printf '%b' 'If the browser shows a code to paste, just click Copy — claude-acc spots it on the\nclipboard and fills it in. Or paste it here and press Enter (it shows as you type).' ;;
+    login_caught)   printf '%b' 'picked up the code from the clipboard (%s…%s) — sending it to claude…' ;;
     login_result)   printf '%b' 'Result:' ;;
 
     usage_rm)       printf '%b' 'usage: claude-acc rm <name>' ;;
@@ -359,7 +363,7 @@ t_en() {
     chk_main_ok)    printf '%b' 'main works' ;;
     chk_rate_limited) printf '%b' '— but the account is OUT of quota right now; wait for the reset (see: claude-acc usage)' ;;
     chk_main_bad)   printf '%b' 'main does NOT work' ;;
-    chk_main_bad2)  printf '%b' ' — run: claude auth login' ;;
+    chk_main_bad2)  printf '%b' ' — run: claude-acc login' ;;
     chk_ok)         printf '%b' '%s works' ;;
     chk_bad)        printf '%b' '%s does NOT work' ;;
     chk_bad2)       printf '%b' ' — run again: claude-acc add %s (answer Y)' ;;
@@ -859,8 +863,14 @@ PYEOF
   return $status
 }
 
+# mk_browser_wrapper <app|__clip__|__default__> [file-ghi-url]
+#   __default__ : mo nhu khi khong co wrapper — BROWSER cua nguoi dung neu co,
+#                 khong thi trinh duyet mac dinh cua macOS. Chi co nghia khi
+#                 can ghi lai URL (doi so thu 2).
+#   file-ghi-url: wrapper ghi URL vao file nay truoc khi mo. Ghi vao FILE, khong
+#                 phai terminal, nen van giu dung luat im lang ben duoi.
 mk_browser_wrapper() {
-  local app="$1" f
+  local app="$1" urlf="${2:-}" f act
   f="$(mktemp -t claude-acc-browser)" || die "$(t err_tmpfile)"
   # QUAN TRONG: wrapper KHONG duoc in bat cu thu gi ra terminal (stdout/stderr).
   # `claude setup-token` dung "alternate screen buffer" (giao dien toan man
@@ -870,20 +880,139 @@ mk_browser_wrapper() {
   # tran) co the lam hong trang thai ve/con tro cua no. `claude` da TU IN URL
   # rieng nhu mot phuong an du phong, nen wrapper chi can lam dung 1 viec:
   # mo app hoac copy vao clipboard, tuyet doi im lang.
-  if [[ "$app" == "__clip__" ]]; then
-    cat > "$f" <<'W'
-#!/bin/sh
-printf '%s' "$1" | pbcopy 2>/dev/null
-W
-  else
-    local q_app; q_app="$(printf '%q' "$app")"
-    cat > "$f" <<EOF
-#!/bin/sh
-open -a $q_app "\$1"
-EOF
-  fi
+  case "$app" in
+    __clip__)    act='printf "%s" "$1" | pbcopy 2>/dev/null' ;;
+    __default__) if [[ -n "${BROWSER:-}" ]]; then
+                   act="$(printf '%q' "$BROWSER") \"\$1\""
+                 else
+                   act='open "$1"'
+                 fi ;;
+    *)           act="open -a $(printf '%q' "$app") \"\$1\"" ;;
+  esac
+  {
+    printf '#!/bin/sh\n'
+    if [[ -n "$urlf" ]]; then
+      printf 'printf "%%s\\n" "$1" > %s\n' "$(printf '%q' "$urlf")"
+    fi
+    printf '%s\n' "$act"
+  } > "$f"
   chmod +x "$f"
   printf '%s' "$f"
+}
+
+# Chay `claude auth login` sao cho go/dan code THAY DUOC.
+#
+# Khac `setup-token` (TUI), `claude auth login` doc code bang readline tren
+# stdin — va do bang pty (claude 2.1.260): dung luc in "Paste code here if
+# prompted >" no chuyen terminal sang raw + TAT ECHO. Go hay dan deu van toi
+# claude (Enter la gui), nhung man hinh khong hien gi, nen trong y nhu terminal
+# khong nhan phim.
+#
+# Cap stdin la mot PIPE thi claude khong dung vao terminal nua (do lai: van
+# ECHO/ICANON/ISIG) ma van doc dong tu pipe nhu thuong. Nen o day:
+#   - claude: stdin = pipe; stdout/stderr van ra thang terminal (URL, loi);
+#   - dong ban go doc tu /dev/tty o che do binh thuong — co echo — roi chuyen
+#     vao pipe;
+#   - dong thoi canh clipboard: code co dang "<code>#<state>". `state` lay tu
+#     URL ma claude dua cho BROWSER (trung voi URL no in ra), nen chi code cua
+#     DUNG lan dang nhap nay moi duoc tu dien — clipboard con sot code cu khong
+#     bao gio bi gui nham.
+run_auth_login() {
+  local wrapper="$1" urlf="$2"
+  if ! command -v python3 >/dev/null 2>&1; then
+    BROWSER="$wrapper" claude auth login
+    return $?
+  fi
+  BROWSER="$wrapper" python3 - "$urlf" "${c_g}✓ $(t login_caught)${c_0}" <<'PYEOF'
+import os, re, select, subprocess, sys, termios, time
+from urllib.parse import unquote
+
+urlf, caught = sys.argv[1], sys.argv[2]
+CODE = re.compile(r"^[^\s#]+#([^\s#]+)$")
+
+def clip():
+    try:
+        out = subprocess.run(["pbpaste"], capture_output=True, timeout=2).stdout
+    except Exception:
+        return ""
+    return out.decode("utf-8", "replace").strip()
+
+def want_state():
+    try:
+        m = re.search(r"[?&]state=([^&\s]+)", open(urlf).read())
+    except OSError:
+        return None
+    return unquote(m.group(1)) if m else None
+
+# sent: moi dong da gui; auto: code da tu dien tu clipboard. Cung mot code toi
+# tu hai nguon (tu dien roi ban lai dan tay) chi gui 1 lan; con go tay lai mot
+# dong sai thi van gui lai, de claude bao loi nhu thuong.
+p, tty, sent, auto, rc = None, None, set(), set(), 1
+
+def send(line):
+    sent.add(line)
+    try:
+        p.stdin.write(line.encode() + b"\n")
+        p.stdin.flush()
+    except OSError:
+        pass
+
+try:
+    try:
+        tty = os.open("/dev/tty", os.O_RDONLY)
+    except OSError:
+        tty = None
+    p = subprocess.Popen(["claude", "auth", "login"], stdin=subprocess.PIPE)
+    next_clip = 0.0
+    while p.poll() is None:
+        if tty is not None:
+            ready = select.select([tty], [], [], 0.25)[0]
+        else:
+            time.sleep(0.25)
+            ready = []
+        if ready:
+            for ln in os.read(tty, 4096).decode("utf-8", "replace").splitlines():
+                if ln.strip() and ln.strip() not in auto:
+                    send(ln.strip())
+        now = time.monotonic()
+        if now < next_clip:
+            continue
+        next_clip = now + 0.5
+        # Chua biet state thi KHONG tu dien gi: claude in prompt truoc roi moi
+        # goi BROWSER (~50ms sau, do duoc), va code nao cung "trong giong"
+        # code. Dan tay van chay binh thuong.
+        st = want_state()
+        if st is None:
+            continue
+        c = clip()
+        m = CODE.match(c)
+        if not m or m.group(1) != st or c in sent:
+            continue
+        sys.stderr.write("\n" + caught % (c[:6], c[-4:]) + "\n")
+        sys.stderr.flush()
+        auto.add(c)
+        send(c)
+    rc = p.returncode
+except KeyboardInterrupt:
+    # Terminal o che do thuong nen Ctrl+C toi ca claude (cung nhom tien trinh)
+    # va no tu thoat; chi doi cho chac, khong de no mo coi.
+    if p is not None:
+        try:
+            p.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait()
+    rc = 130
+finally:
+    if tty is not None:
+        # Bo phan go/dan claude chua doc toi (vd dan code dung luc no vua tu
+        # dang nhap xong) — de lai thi shell se chay no nhu mot lenh.
+        try:
+            termios.tcflush(tty, termios.TCIFLUSH)
+        except termios.error:
+            pass
+sys.exit(rc)
+PYEOF
 }
 
 # Doc token tu terminal. Co y KHONG dung `read -s`: token dai, an het ky tu
@@ -1807,18 +1936,16 @@ cmd_login() {
   info "${c_y}$(t login_warn)${c_0}$(t login_warn2)"
   info "$(t login_warn3)"
 
-  local wrapper=""
-  [[ -n "$browser" ]] && wrapper="$(mk_browser_wrapper "$browser")"
+  # Luon co wrapper (ke ca khi khong chon browser) de ghi lai URL — can `state`
+  # trong do de tu dien code tu clipboard, xem run_auth_login().
+  local urlf wrapper
+  urlf="$(mktemp -t claude-acc-url)" || die "$(t err_tmpfile)"
+  wrapper="$(mk_browser_wrapper "${browser:-__default__}" "$urlf")"
   [[ -n "$browser" && "$browser" != "__clip__" ]] && info "${c_b}$(tp add_browse_in "$browser")${c_0}"
+  info "${c_dim}$(t login_note)${c_0}\n"
 
-  # Khong dung `</dev/tty`: xem giai thich trong cmd_add() — mo lai stdin qua
-  # /dev/tty lam luong "Paste code here" cua claude khong nhan duoc phim/paste.
-  if [[ -n "$wrapper" ]]; then
-    BROWSER="$wrapper" claude auth login || true
-    rm -f "$wrapper"
-  else
-    claude auth login || true
-  fi
+  run_auth_login "$wrapper" "$urlf" || true
+  rm -f "$wrapper" "$urlf"
 
   { stty sane </dev/tty; } >/dev/null 2>&1 || true
   info "\n${c_dim}$(t login_result)${c_0}"
@@ -2230,7 +2357,8 @@ ${c_b}LỆNH${c_0}
   ls                     Liệt kê acc, acc nào đang có hiệu lực ở đâu
   check <tên|main>       Gọi một request thật để xác nhận acc đó còn dùng được
   lang [vi|en|auto]      Xem hoặc đổi ngôn ngữ của claude-acc
-  login [--browser <app>]  Đăng nhập acc "main" (ghi đè Keychain), chọn browser
+  login [--browser <app>]  Đăng nhập acc "main" (ghi đè Keychain), chọn browser.
+                         Code dán vào sẽ hiện ra; code bấm Copy trên web được tự điền
   rm <tên>               Xóa acc phụ khỏi Keychain
   run <tên|main> [-- args]  (nâng cao) Chạy claude bằng acc đó CHỈ CHO LỆNH NÀY,
                          không đổi acc đang ghim. Lỗi nếu đang có acc khác ghim.
@@ -2309,7 +2437,8 @@ ${c_b}COMMANDS${c_0}
   ls                     List accounts, and which one is in effect where
   check <name|main>      Make a real request to confirm an account still works
   lang [vi|en|auto]      Show or change the language claude-acc speaks
-  login [--browser <app>]  Sign in the "main" account (overwrites the Keychain)
+  login [--browser <app>]  Sign in the "main" account (overwrites the Keychain).
+                         A pasted code shows as you type; a copied one is filled in
   rm <name>              Remove a token account from the Keychain
   run <name|main> [-- args]  (advanced) Run claude under that account FOR THIS
                          COMMAND ONLY. Errors out if another account is pinned.

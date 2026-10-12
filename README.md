@@ -37,8 +37,9 @@ Make sure `~/.local/bin` is on your `PATH`.
 ## Quick start
 
 ```bash
-# Log into your main account the normal way, once:
-claude auth login
+# Log into your main account once (this is `claude auth login`, but you can
+# see what you paste, and a code you copy from the browser is filled in):
+claude-acc login
 
 # Add a second account. Browse to it in whichever browser/profile/private
 # window is already signed into that account:
@@ -255,7 +256,7 @@ That's why `claude-acc ls` can show an email for `main` but not for token accoun
 | `lang [vi\|en\|auto]` | Show or change the language of every message, `help` included. Defaults to the system `LANG`, falling back to English. |
 | `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. Shows each account's last known 5h / 7d usage with the age of that reading — read from cache, so `ls` never spends a request or starts a window. |
 | `check <name\|main>` | Verify an account's credential still works, with a real API call — not just a config read. |
-| `login [--browser <app>]` | Re-run `claude auth login` for `main` (this overwrites the Keychain — `main` only). |
+| `login [--browser <app>]` | Sign `main` in through `claude auth login` (this overwrites the Keychain — `main` only). Unlike running that bare, you can see the code you paste, and a code you copy is filled in for you — see [below](#login-a-code-prompt-you-can-see). |
 | `rm <name>` | Remove a secondary account's token. |
 | `uninstall` | Remove every token and config `claude-acc` created. |
 | `run <name\|main> -- [args]` | Advanced: run one `claude` invocation under a given account without changing what's pinned. Refuses to run if a different account is currently pinned via `switch`, to avoid silently using the wrong one. |
@@ -313,6 +314,23 @@ The capture reads the token across a line break, because `script` records what t
 line stored a truncated credential that the API rejected as `invalid`.
 
 Either way, once `claude setup-token` prints the final `sk-ant-oat01-…` token, `claude-acc` grabs it automatically (it runs the command through `script(1)`, which gives `claude` a real terminal to render into while still letting `claude-acc` read back what it printed) — no copy/paste needed for that last step. If capture ever fails for some reason, it falls back to asking you to paste that token manually, so `add` can never leave you with no way to finish.
+
+## `login`: a code prompt you can see
+
+Bare `claude auth login` reads the code at `Paste code here if prompted >` with the terminal's
+echo switched off (measured on Claude Code 2.1.260). What you type or paste does reach it, and
+Enter submits it — but nothing shows on screen, so it looks like the terminal stopped taking
+input.
+
+`claude-acc login` runs the same command, with its input passing through `claude-acc` instead:
+
+- What you type or paste shows as usual, and Enter sends it.
+- Click **Copy** on the browser's code page and the code is picked up from the clipboard and
+  sent for you. Only a code whose `state` matches this login's URL is used, so an old code left
+  on the clipboard is never sent.
+
+Stuck at that prompt in bare `claude auth login`? Paste once and press Enter — the code is
+there even though you can't see it.
 
 ## Why the account's token ends up as plaintext in a JSON file
 
