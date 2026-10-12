@@ -3,6 +3,7 @@ package signin
 import (
 	"os"
 	"os/exec"
+	"os/signal"
 )
 
 // SetupToken runs `claude setup-token` in the user's terminal and returns
@@ -17,7 +18,11 @@ func SetupToken(env []string) string {
 }
 
 // plainSetupToken runs it with nothing in between and captures nothing.
+// Ctrl+C there is for claude; claude-acc stays up to ask for the token.
 func plainSetupToken(env []string) {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	defer signal.Stop(sig)
 	c := exec.Command("claude", "setup-token")
 	c.Env = env
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr

@@ -3,7 +3,7 @@
 package i18n
 
 var vi = map[string]string{
-	"err_macos":     "script này chỉ chạy trên macOS (dùng `security` của Keychain).",
+	"err_macos":     "claude-acc chỉ chạy trên macOS và Windows.",
 	"err_no_claude": "không tìm thấy `claude` trong PATH.",
 	"err_bad_name":  "tên acc chỉ được chứa chữ, số, . _ - (nhận được: \"%s\")",
 	"err_main_res":  "\"main\" là tên dành riêng cho acc đăng nhập bằng Keychain.",
@@ -211,7 +211,7 @@ var vi = map[string]string{
 }
 
 var en = map[string]string{
-	"err_macos":     "this script only runs on macOS (it uses the Keychain `security` CLI).",
+	"err_macos":     "claude-acc runs on macOS and Windows only.",
 	"err_no_claude": "could not find `claude` in PATH.",
 	"err_bad_name":  "an account name may only contain letters, digits, . _ - (got: \"%s\")",
 	"err_main_res":  "\"main\" is reserved for the account signed in through the Keychain.",

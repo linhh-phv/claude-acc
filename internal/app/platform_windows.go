@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 
 	"github.com/linhh-phv/claude-acc/internal/i18n"
@@ -18,7 +19,13 @@ import (
 const useSymlinks = false
 
 // execClaude runs claude and hands back its exit code — Windows has no exec.
+// Ctrl+C reaches every process on the console; claude handles it (it
+// interrupts a reply rather than quitting), so claude-acc must not die from
+// it and leave claude fighting the shell for the console.
 func execClaude(env []string, args []string) int {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	defer signal.Stop(sig)
 	c := exec.Command("claude", args...)
 	c.Env = env
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
