@@ -10,8 +10,9 @@ import (
 )
 
 // lineSource reads what the user types at the terminal, in its normal
-// (cooked, echoing) mode. A raw fd with poll rather than os.File: the Go
-// runtime poller and a tty do not mix well on macOS.
+// (cooked, echoing) mode. A raw fd with select(2): poll(2) on macOS "does not
+// support devices" (man page, BUGS) — it answers POLLNVAL for /dev/tty, and
+// the typed line was never read. Measured in the parity test.
 type lineSource struct{ fd int }
 
 func openLines() *lineSource {
@@ -29,12 +30,12 @@ func (s *lineSource) poll(d time.Duration) []string {
 		time.Sleep(d)
 		return nil
 	}
-	fds := []unix.PollFd{{Fd: int32(s.fd), Events: unix.POLLIN}}
-	n, err := unix.Poll(fds, int(d/time.Millisecond))
-	if err != nil || n == 0 || fds[0].Revents&unix.POLLIN == 0 {
-		if err == nil && n > 0 {
-			time.Sleep(d) // hang-up or error: do not spin
-		}
+	var rset unix.FdSet
+	rset.Zero()
+	rset.Set(s.fd)
+	tv := unix.NsecToTimeval(d.Nanoseconds())
+	n, err := unix.Select(s.fd+1, &rset, nil, nil, &tv)
+	if err != nil || n <= 0 || !rset.IsSet(s.fd) {
 		return nil
 	}
 	buf := make([]byte, 4096)

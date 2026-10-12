@@ -354,3 +354,12 @@ func diffMaps(a, b map[string]string) string {
 	}
 	return d.String()
 }
+
+// TestMain removes the binaries built for the run.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if goBin != "" {
+		os.RemoveAll(filepath.Dir(goBin))
+	}
+	os.Exit(code)
+}
