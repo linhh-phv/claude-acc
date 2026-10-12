@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/linhh-phv/claude-acc/internal/fsx"
@@ -46,11 +47,13 @@ func backupSettings() {
 }
 
 // settingsTarget is the file to write: through a symlink (dotfile managers
-// link settings.json), never replacing the link itself.
+// link settings.json), never replacing the link itself. ~/.claude is created
+// if Claude Code has not made it yet.
 func settingsTarget() string {
 	if fsx.IsLink(settings) {
 		return fsx.RealPath(settings)
 	}
+	os.MkdirAll(filepath.Dir(settings), 0o755)
 	return settings
 }
 
