@@ -1,0 +1,82 @@
+{{B}}claude-acc{{R}} v{{V}} — several Claude Code accounts on one PC, without logging in again
+
+{{B}}COMMANDS{{R}}
+  add <name> [options]   Add a token account: runs `claude setup-token`, stores the
+                         token in Windows Credential Manager
+      --browser <app>      Browse in this app instead of your default browser
+                           (e.g. chrome | msedge | firefox | brave)
+      --url-only           Do not open a browser; COPY the auth URL to the clipboard
+      --stdin              Read the token from stdin:  Get-Clipboard | claude-acc add x --stdin
+      --clip               Take the token from the clipboard, no prompts
+      --no-setup           Skip generating a token (when you already have one)
+  switch <name|main>     Change the account for BOTH the Cursor/VS Code GUI and the
+                         terminal, IN EFFECT NOW — no Reload Window. THE MAIN COMMAND.
+                         Note: it also moves sessions ALREADY RUNNING, in every repo.
+  switch <name|main|off> --here
+                         The same, but ONLY for the repo/workspace you are in —
+                         one account per repo, so no single account takes the
+                         whole load. `off` drops the pin and follows the global one.
+      --at <dir>           pin another directory instead of the current one
+      --no-check           skip the verifying API call after pinning
+      --all                pin EVERY folder of the workspace too (each folder
+                           gets its own copy, kept in step by every --here)
+  usage [name...]        Show how much of the 5h / 7d window each account has used
+                         and when it resets (default: ALL). Asking is itself a
+                         request (9 tokens), so it ALSO starts that window — use
+                         it when you want the clock started early.
+  reassign <old> <new>   Move EVERY directory pinned to <old> over to <new>
+  sync                   Rewrite the token in every pinned directory (after adding
+                         an account again, or if a repo file looks edited)
+  ls                     List accounts, and which one is in effect where
+  check <name|main>      Make a real request to confirm an account still works
+  lang [vi|en|auto]      Show or change the language claude-acc speaks
+  login [--browser <app>]  Sign in the "main" account (overwrites Claude Code's
+                         own credential). A pasted code shows as you type
+  rm <name>              Remove a token account from Credential Manager
+  run <name|main> [-- args]  (advanced) Run claude under that account FOR THIS
+                         COMMAND ONLY. Errors out if another account is pinned.
+  env <name|main>        (advanced) Switch THIS PowerShell session only:
+                           claude-acc env name | Invoke-Expression
+  uninstall              Remove every token and all claude-acc configuration
+  version, -v            Print the version
+  help, -h               Print this help
+
+{{B}}QUICK START{{R}}
+  claude-acc add work --browser msedge        # browse where that account is signed in
+  claude-acc switch work                      # change account for terminal and GUI
+  claude                                      # use claude as usual
+  claude-acc switch main                      # back to the main account
+
+  cd <repo>; claude-acc switch work --here       # this repo uses a different account
+  claude-acc switch main --here                  # this repo uses main
+  claude-acc switch off --here                   # drop this repo's pin
+  claude-acc reassign work other               # work is near its limit -> spread out
+
+  claude-acc usage                            # headroom, and starts the 5-hour window
+  claude-acc usage work other                 # only these two
+
+{{B}}DIRECTORY PINS — two things you MUST know (both measured on macOS){{R}}
+  - Repo-level settings only apply when `claude` runs in the exact directory
+    holding .claude\. They do NOT cascade into subdirectories — `cd apps\web;
+    claude` silently uses the global account. `claude-acc ls` shows what is
+    really in effect where you stand.
+  - In a Cursor/VS Code multi-root workspace, EVERY chat tab runs in folder
+    [0] of the .code-workspace file, even a tab working on another worktree.
+    So a pin covers the WHOLE workspace, not one worktree — and `--here`
+    aims at folder [0] rather than the directory you happen to be in.
+
+{{B}}NOTES{{R}}
+  - Only "main" has claude.ai connectors, Remote Control and /schedule.
+    Make your most-used account main.
+  - `claude setup-token` never touches main's credential, so adding a token
+    account can never log the main one out. Only `claude-acc login` does.
+  - On Windows claude-acc cannot yet read the token back from `claude
+    setup-token`: copy it when it is printed, then press Enter at the prompt.
+  - `setup-token` credentials last about a year. When one expires, run
+    `claude-acc add <name>` again.
+  - `switch` writes the token in PLAIN TEXT into
+    %USERPROFILE%\.claude\settings.json, because Cursor/VS Code read
+    credentials from there and cannot read a per-account Credential Manager
+    entry.
+  - History and sessions are shared across accounts (CLAUDE_CONFIG_DIR is not
+    split per account).

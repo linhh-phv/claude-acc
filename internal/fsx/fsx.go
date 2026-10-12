@@ -72,7 +72,11 @@ func WritePrivate(path, tmpSuffix string, data []byte) error {
 		os.Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // IsDir reports whether p is an existing directory (following symlinks).
