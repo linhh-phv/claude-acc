@@ -108,7 +108,7 @@ func binaries(t *testing.T) (string, string) {
 			buildErr = fmt.Errorf("go build: %v\n%s", err, out)
 			return
 		}
-		src, err := os.ReadFile("../../bin/claude-acc")
+		src, err := os.ReadFile("../../legacy/claude-acc.bash")
 		if err != nil {
 			buildErr = err
 			return
