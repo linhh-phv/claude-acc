@@ -1,0 +1,75 @@
+{{B}}claude-acc{{R}} v{{V}} — nhiều account Claude Code trên một máy, không phải login lại
+
+{{B}}LỆNH{{R}}
+  add <tên> [tùy chọn]   Thêm acc phụ: chạy `claude setup-token`, lưu token vào Keychain
+      --browser <app>      Duyệt trong app này thay vì browser mặc định
+                           (vd: "Google Chrome" | "Safari" | "Brave Browser")
+      --url-only           Không mở browser; COPY URL duyệt vào clipboard để tự dán
+      --stdin              Đọc token từ stdin:  pbpaste | claude-acc add x --stdin
+      --clip               Lấy token từ clipboard, không hỏi gì
+      --no-setup           Bỏ qua bước sinh token (khi đã có token sẵn)
+  switch <tên|main>      Đổi acc cho CẢ Cursor/VS Code GUI lẫn terminal, ĂN NGAY
+                         — không cần Reload Window. ĐÂY LÀ LỆNH CHÍNH ĐỂ ĐỔI ACC.
+                         Lưu ý: áp ngay cho CẢ CÁC PHIÊN ĐANG CHẠY ở mọi repo.
+  switch <tên|main|off> --here
+                         Như trên, nhưng CHỈ cho repo/workspace bạn đang dùng
+                         — để mỗi repo một acc, khỏi dồn limit vào một acc.
+                         `off` = bỏ ghim riêng, quay về theo acc toàn cục.
+      --at <thư-mục>       ghim cho thư mục khác thay vì thư mục hiện tại
+      --no-check           bỏ qua bước gọi thử API sau khi ghim
+      --all                cho MỌI folder của workspace dùng chung ghim này
+                           (symlink; token vẫn chỉ nằm ở một chỗ duy nhất)
+  usage [tên...]         Xem đã tiêu bao nhiêu % cửa sổ 5h / 7 ngày và bao giờ
+                         reset, cho từng acc (mặc định: TẤT CẢ). Chính việc hỏi
+                         là một request (9 token) nên CŨNG mở cửa sổ 5h của acc
+                         đó — dùng luôn thay cho việc "trigger" cho sớm chạy giờ.
+  reassign <cũ> <mới>    Chuyển MỌI thư mục đang ghim <cũ> sang <mới>
+  sync                   Ghi lại token cho mọi thư mục đã ghim (sau khi `add`
+                         lại một acc, hoặc khi nghi file trong repo bị sửa)
+  ls                     Liệt kê acc, acc nào đang có hiệu lực ở đâu
+  check <tên|main>       Gọi một request thật để xác nhận acc đó còn dùng được
+  lang [vi|en|auto]      Xem hoặc đổi ngôn ngữ của claude-acc
+  login [--browser <app>]  Đăng nhập acc "main" (ghi đè Keychain), chọn browser.
+                         Code dán vào sẽ hiện ra; code bấm Copy trên web được tự điền
+  rm <tên>               Xóa acc phụ khỏi Keychain
+  run <tên|main> [-- args]  (nâng cao) Chạy claude bằng acc đó CHỈ CHO LỆNH NÀY,
+                         không đổi acc đang ghim. Lỗi nếu đang có acc khác ghim.
+  env <tên|main>         (nâng cao) In lệnh export để đổi acc cho SHELL HIỆN TẠI:
+                           eval "$(claude-acc env tên-acc)"
+  uninstall              Xóa toàn bộ token trong Keychain và cấu hình của claude-acc
+  version, -v            In phiên bản
+  help, -h               In hướng dẫn này
+
+{{B}}BẮT ĐẦU NHANH{{R}}
+  claude-acc add ca-nhan --browser "Safari"   # duyệt trong browser đang login acc đó
+  claude-acc switch ca-nhan                   # đổi acc cho cả terminal lẫn GUI
+  claude                                      # dùng claude như bình thường
+  claude-acc switch main                      # đổi về acc chính
+
+  cd <repo> && claude-acc switch ca-nhan --here   # riêng repo này dùng acc khác
+  claude-acc switch main --here                  # riêng repo này dùng main
+  claude-acc switch off --here                   # bỏ ghim riêng của repo
+  claude-acc reassign ca-nhan acc-2           # acc-1 gần hết limit -> san tải
+
+  claude-acc usage                            # acc nào còn hạn mức + mở cửa sổ 5h
+  claude-acc usage ca-nhan acc-2              # chỉ 2 acc này (bỏ qua acc công ty)
+
+{{B}}GHIM THEO THƯ MỤC — hai điều PHẢI biết (đều đã đo, không phải suy đoán){{R}}
+  - Settings cấp repo chỉ ăn khi `claude` chạy ĐÚNG ở thư mục chứa .claude/.
+    Chạy từ thư mục con KHÔNG kế thừa — `cd apps/web && claude` sẽ âm thầm
+    dùng acc toàn cục. `claude-acc ls` cho biết acc nào thật sự có hiệu lực.
+  - Trong Cursor/VS Code multi-root workspace, MỌI tab chat đều chạy ở folder
+    [0] của file .code-workspace, kể cả khi tab đó làm việc trên worktree
+    khác. Nên ghim áp cho CẢ workspace, không riêng một worktree — và
+    `--here` tự nhắm vào folder [0] thay vì thư mục bạn đang đứng.
+
+{{B}}LƯU Ý{{R}}
+  - Chỉ acc "main" có claude.ai connectors, Remote Control và /schedule.
+    Chọn acc dùng nhiều nhất làm main.
+  - `claude setup-token` KHÔNG ghi vào Keychain của acc "main" — thêm acc phụ
+    không bao giờ làm mất đăng nhập của acc chính. Chỉ `claude-acc login` mới
+    ghi đè Keychain.
+  - Token `setup-token` sống 1 năm. Hết hạn thì `claude-acc add <tên>` lại.
+  - `switch` ghi token DẠNG VĂN BẢN vào ~/.claude/settings.json (quyền 600) vì
+    Cursor/VS Code đọc credential từ đó, không đọc được Keychain riêng theo acc.
+  - History/session dùng chung giữa các acc (không tách CLAUDE_CONFIG_DIR).
