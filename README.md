@@ -64,7 +64,7 @@ irm https://raw.githubusercontent.com/linhh-phv/claude-acc/main/install.ps1 | ie
 Then open a **new** PowerShell window and check:
 
 ```powershell
-claude-acc version        # claude-acc 2.0.0
+claude-acc version        # claude-acc 2.0.1
 ```
 
 Rather not paste a command? Download `claude-acc-windows-amd64.zip` (`…-arm64.zip` on an ARM
@@ -511,7 +511,7 @@ test of its own — e.g. `TestHomeOfOneWorkspace`: a directory that is folder `[
 workspace and an extra folder of another, which 1.x refused to pin.
 
 **Releasing:** `install.sh` and `install.ps1` download from the latest GitHub release, so
-upload the files from `dist/` to a release (tag `v2.0.0`) *before* or together with pushing
+upload the files from `dist/` to a release (tag `vX.Y.Z`) *before* or together with pushing
 `main` — otherwise the one-line installers fail with a 404.
 
 ## License
