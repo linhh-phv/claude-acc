@@ -121,7 +121,8 @@ func cmdLs(args []string) int {
 	// line goes BEFORE "HERE": someone who just pinned the workspace and then
 	// reads "HERE <other account>" would think the pin did not take.
 	cwd := fsx.Cwd()
-	gdir, gnote, _ := resolveTarget(fsx.LogicalCwd())
+	gt, _ := resolveTarget(fsx.LogicalCwd())
+	gdir, gnote := gt.dir, gt.note
 	hasGUI := false
 	if gdir != "" && gdir != cwd {
 		hasGUI = true
@@ -241,6 +242,9 @@ func listPins(cwd string) {
 		if root == rd && len(paths) > 1 {
 			sym, own := 0, 0
 			for _, q := range paths[1:] {
+				if _, ok := homeElsewhere(q, rd); ok {
+					continue // listed on its own line
+				}
 				f := repoFile(q)
 				if fsx.IsLink(f) {
 					sym++

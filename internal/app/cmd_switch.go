@@ -42,7 +42,8 @@ func cmdSwitch(args []string) int {
 	// one. Standing in one of those and saying nothing, the user would think
 	// this repo switched too.
 	cwd := fsx.Cwd()
-	gdir, _, _ := resolveTarget(fsx.LogicalCwd())
+	gt, _ := resolveTarget(fsx.LogicalCwd())
+	gdir := gt.dir
 	gpin := repoPin(cwd)
 	if gpin == "" && gdir != "" && gdir != cwd {
 		gpin = repoPin(gdir)

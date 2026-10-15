@@ -205,21 +205,31 @@ type errAmbig struct{ names string }
 
 func (e errAmbig) Error() string { return i18n.Tp("err_ambig_ws", e.names) }
 
+// target is where a pin for a directory has to land.
+type target struct {
+	dir string
+	// note names the workspace when dir is its folder [0].
+	note string
+	// others are workspaces that also list the directory; their chat tabs
+	// run in their own folder [0], out of this pin's reach.
+	others []string
+}
+
 // resolveTarget is the directory a pin for base has to land in: folder [0]
 // of its workspace (with a note naming the workspace), else the git root,
 // else base itself.
-func resolveTarget(base string) (dir, note string, err error) {
-	kind, root, n := workspace.GuiRoot(base)
-	if kind == workspace.Ambig {
-		return "", "", errAmbig{n}
+func resolveTarget(base string) (target, error) {
+	a := workspace.GuiRoot(base)
+	if a.Kind == workspace.Ambig {
+		return target{}, errAmbig{a.Note}
 	}
-	if kind == workspace.WS && root != "" {
-		return root, n, nil
+	if a.Kind == workspace.WS && a.Root != "" {
+		return target{a.Root, a.Note, a.Others}, nil
 	}
 	if top, ok := gitx.Toplevel(fsx.RealPath(base)); ok {
-		return top, "", nil
+		return target{dir: top}, nil
 	}
-	return fsx.RealPath(base), "", nil
+	return target{dir: fsx.RealPath(base)}, nil
 }
 
 // onlyPin reports whether a settings file holds nothing but a claude-acc pin
@@ -246,6 +256,18 @@ func onlyPin(path string) bool {
 	return true
 }
 
+// homeElsewhere reports whether folder f of root's workspace is folder [0]
+// of a workspace of its own, and names that workspace. Its pin belongs to
+// that workspace: moving it along with root's would switch a workspace the
+// user never touched.
+func homeElsewhere(f, root string) (string, bool) {
+	a := workspace.GuiRoot(f)
+	if a.Kind == workspace.WS && a.Root != root {
+		return a.File, true
+	}
+	return "", false
+}
+
 // syncWsMembers moves the other folders of the workspace that already hold
 // a pin of their own (a real file) to the new account. It creates no new
 // pins — it only keeps existing ones from drifting.
@@ -260,6 +282,10 @@ func syncWsMembers(root, name, tok string) {
 			continue
 		}
 		if repoPin(f) == "" {
+			continue
+		}
+		if ws, ok := homeElsewhere(f, root); ok {
+			ui.Info(ui.Dim + i18n.Tp("home_skip", f, ws) + ui.Reset)
 			continue
 		}
 		if !gitPinOK(f) {
@@ -290,6 +316,11 @@ func shareWorkspace(root, accName, accTok string) {
 	n, skipped, merged, copied := 0, 0, 0, 0
 	for _, f := range workspace.Folders(root) {
 		if f == "" || f == root {
+			continue
+		}
+		if ws, ok := homeElsewhere(f, root); ok {
+			ui.Info(ui.Dim + i18n.Tp("home_skip", f, ws) + ui.Reset)
+			skipped++
 			continue
 		}
 		target := repoFile(f)

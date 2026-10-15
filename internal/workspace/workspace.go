@@ -19,7 +19,7 @@ import (
 	"github.com/linhh-phv/claude-acc/internal/pyjson"
 )
 
-// Kind of answer from GuiRoot.
+// Kind of Answer from GuiRoot.
 const (
 	None  = "NONE"
 	Ambig = "AMBIG"
@@ -106,68 +106,111 @@ func member(start string, paths []string) bool {
 	return false
 }
 
-// GuiRoot answers where the GUI runs claude for a directory: kind WS with
-// folder [0] and a note "<file> (N folder)", kind AMBIG with the names of the
-// competing workspaces in note, or kind None.
-func GuiRoot(dir string) (kind, root, note string) {
-	start := fsx.RealPath(dir)
-	type cand struct {
-		file, root string
-		n          int
-	}
-	var cands []cand
-	scan(start, func(w wsFile) bool {
-		if len(w.paths) > 0 && member(start, w.paths) {
-			cands = append(cands, cand{w.file, w.paths[0], len(w.paths)})
+// pick decides which workspace a directory belongs to. cands is every
+// workspace holding start, in scan order; ok is false when none does or when
+// the choice is not guessable.
+//
+// One directory can sit in several workspaces: a repo is folder [0] of its
+// own workspace and an extra folder of a bigger one. Only folder [0] matters
+// to the GUI, so:
+//   - all of them share folder [0]: that is the answer either way;
+//   - exactly one folder [0] holds start: start is that workspace's home —
+//     the others merely list it, and their chat tabs never run there;
+//   - otherwise (an extra folder in workspaces with different homes, or
+//     homes nested in one another): not guessable.
+func pick(start string) (w wsFile, cands []wsFile, ok bool) {
+	scan(start, func(c wsFile) bool {
+		if len(c.paths) > 0 && member(start, c.paths) {
+			cands = append(cands, c)
 		}
 		return true
 	})
 	if len(cands) == 0 {
-		return None, "", ""
+		return wsFile{}, nil, false
 	}
-	roots := map[string]bool{}
+	if len(roots(cands)) == 1 {
+		return cands[0], cands, true
+	}
+	var homes []wsFile
 	for _, c := range cands {
-		roots[c.root] = true
+		if fsx.Within(start, c.paths[0]) {
+			homes = append(homes, c)
+		}
 	}
-	if len(roots) > 1 {
+	if len(homes) > 0 && len(roots(homes)) == 1 {
+		return homes[0], cands, true
+	}
+	return wsFile{}, cands, false
+}
+
+func roots(ws []wsFile) map[string]bool {
+	m := map[string]bool{}
+	for _, w := range ws {
+		m[w.paths[0]] = true
+	}
+	return m
+}
+
+// Answer is where the GUI runs claude for a directory.
+type Answer struct {
+	Kind string // WS, Ambig or None
+	Root string // WS: folder [0]
+	File string // WS: the .code-workspace file's name
+	// Note is "<file> (N folder)" for WS, the competing workspaces for Ambig.
+	Note string
+	// Others names, for WS, the workspaces that list the directory without
+	// running there: a pin landing in Root does not reach their chat tabs.
+	Others []string
+}
+
+// GuiRoot answers where the GUI runs claude for a directory.
+func GuiRoot(dir string) Answer {
+	w, cands, ok := pick(fsx.RealPath(dir))
+	if len(cands) == 0 {
+		return Answer{Kind: None}
+	}
+	if !ok {
 		names := make([]string, len(cands))
 		for i, c := range cands {
 			names[i] = filepath.Base(c.file)
 		}
-		return Ambig, "", strings.Join(names, ", ")
+		return Answer{Kind: Ambig, Note: strings.Join(names, ", ")}
 	}
-	c := cands[0]
-	return WS, c.root, filepath.Base(c.file) + " (" + strconv.Itoa(c.n) + " folder)"
+	name := filepath.Base(w.file)
+	a := Answer{Kind: WS, Root: w.paths[0], File: name, Note: name + " (" + strconv.Itoa(len(w.paths)) + " folder)"}
+	for _, c := range cands {
+		if c.paths[0] != a.Root {
+			a.Others = append(a.Others, filepath.Base(c.file))
+		}
+	}
+	return a
 }
 
-// Folders lists every existing folder of the first workspace containing dir,
-// folder [0] first. Empty when dir belongs to none.
+// Folders lists every existing folder of the workspace dir belongs to,
+// folder [0] first. Empty when dir belongs to none, or to several and it is
+// not guessable which.
 func Folders(dir string) []string {
-	start := fsx.RealPath(dir)
 	var out []string
-	scan(start, func(w wsFile) bool {
-		if !member(start, w.paths) {
-			return true
+	for _, q := range paths(dir) {
+		if fsx.IsDir(q) {
+			out = append(out, q)
 		}
-		for _, q := range w.paths {
-			if fsx.IsDir(q) {
-				out = append(out, q)
-			}
-		}
-		return false
-	})
+	}
 	return out
 }
 
-// Of returns folder [0] and all folders of the first workspace containing dir.
-func Of(dir string) (root string, paths []string) {
-	start := fsx.RealPath(dir)
-	scan(start, func(w wsFile) bool {
-		if len(w.paths) > 0 && member(start, w.paths) {
-			root, paths = w.paths[0], w.paths
-			return false
-		}
-		return true
-	})
-	return root, paths
+// Of returns folder [0] and all folders of the workspace dir belongs to.
+func Of(dir string) (root string, all []string) {
+	all = paths(dir)
+	if len(all) > 0 {
+		root = all[0]
+	}
+	return root, all
+}
+
+func paths(dir string) []string {
+	if w, _, ok := pick(fsx.RealPath(dir)); ok {
+		return w.paths
+	}
+	return nil
 }
