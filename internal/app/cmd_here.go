@@ -43,18 +43,19 @@ func cmdHere(args []string) int {
 		ui.Die(i18n.T("usage_here"))
 	}
 
-	var dir, note string
+	var tgt target
 	if at != "" {
 		if !fsx.IsDir(at) {
 			ui.Die(i18n.Tp("err_no_dir", at))
 		}
-		dir = fsx.RealPath(at)
+		tgt.dir = fsx.RealPath(at)
 	} else {
 		var err error
-		if dir, note, err = resolveTarget(fsx.LogicalCwd()); err != nil {
+		if tgt, err = resolveTarget(fsx.LogicalCwd()); err != nil {
 			ui.Die(err.Error())
 		}
 	}
+	dir := tgt.dir
 
 	tok := ""
 	if name != "off" && name != "main" {
@@ -87,9 +88,13 @@ func cmdHere(args []string) int {
 		ui.Info(ui.Green + i18n.Tp("here_acc", name) + ui.Reset + i18n.Tp("here_for", dir))
 		ui.Info(ui.Yellow + i18n.Tp("here_plain", repoFile(dir)) + ui.Reset)
 	}
-	if note != "" {
-		ui.Info(ui.Dim + i18n.Tp("here_ws", note) + ui.Reset)
+	if tgt.note != "" {
+		ui.Info(ui.Dim + i18n.Tp("here_ws", tgt.note) + ui.Reset)
 		ui.Info(ui.Dim + i18n.T("here_ws2") + ui.Reset)
+	}
+	if len(tgt.others) > 0 {
+		ui.Info(ui.Dim + i18n.Tp("here_ws_other", strings.Join(tgt.others, ", ")) + ui.Reset)
+		ui.Info(ui.Dim + i18n.T("here_ws_other2") + ui.Reset)
 	}
 
 	if now := fsx.Cwd(); now != dir {

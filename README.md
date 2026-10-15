@@ -266,6 +266,16 @@ different worktree. So a pin applies to the whole workspace, not to one worktree
 `here` aims at folder `[0]` for you rather than at whatever directory your terminal
 happens to be in. It tells you when it does that.
 
+A directory can sit in more than one workspace — typically a repo that is folder `[0]` of
+its own `.code-workspace` and an extra folder of a bigger one. Since only folder `[0]`
+counts, `here` goes by that: if the directory is (inside) folder `[0]` of exactly one of
+them, that workspace wins. The others merely list it — their chat tabs run in their own
+folder `[0]`, which a pin here never reaches — and `here` names them so you know. The
+other way round, pinning the bigger workspace (with or without `--all`) leaves that
+directory's pin alone: it belongs to its own workspace. If the directory is only an extra
+folder of workspaces with different folders `[0]`, there is nothing to go by, and `here`
+asks you to name the target with `--at`.
+
 ### About the token in your repo
 
 The pin has to contain the real token: the indirection that would avoid it,
@@ -496,6 +506,9 @@ go test ./...          # the parity suite needs macOS and python3 (for the 1.x r
 through a real pseudo-terminal — in a fake world (temp `HOME`, fake `security` and `claude`,
 a fake API answering per token), and checks that the bash and Go versions print the same
 bytes, exit with the same code, write the same files, and call `claude` the same way.
+Where 2.x differs on purpose, the scenario says why (its `fix`), or the difference has a
+test of its own — e.g. `TestHomeOfOneWorkspace`: a directory that is folder `[0]` of one
+workspace and an extra folder of another, which 1.x refused to pin.
 
 **Releasing:** `install.sh` and `install.ps1` download from the latest GitHub release, so
 upload the files from `dist/` to a release (tag `v2.0.0`) *before* or together with pushing

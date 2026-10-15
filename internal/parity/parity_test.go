@@ -226,11 +226,14 @@ var scenarios = []scenario{
 		s.registry(a+"\twork", b+"\twork")
 		return a
 	}},
+	// c is an extra folder of both workspaces, whose homes differ. (Standing
+	// in a, home of one and extra of two, 1.x refused too; 2.x picks one on
+	// purpose — see TestHomeOfOneWorkspace.)
 	{name: "here-ws-ambiguous", args: []string{"here", "work"}, setup: func(s *sandbox) string {
 		std(s)
 		workspace(s, "one")
-		s.file("hub/two.code-workspace", `{"folders": [{"path": "b"}, {"path": "a"}]}`)
-		return filepath.Join(s.w, "hub", "a")
+		s.file("hub/two.code-workspace", `{"folders": [{"path": "b"}, {"path": "c"}]}`)
+		return filepath.Join(s.w, "hub", "c")
 	}},
 
 	// ---- reassign / sync / rm
