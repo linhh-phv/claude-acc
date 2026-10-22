@@ -253,6 +253,11 @@ func printUsage(names []string, res map[string]string) {
 		}
 	}
 
+	// The account in effect where you stand, under the table that shows its
+	// quota: otherwise finding it takes a second command (`ls`).
+	fmt.Fprintln(w)
+	printWhere(w, globalAcc())
+
 	if len(best) > 1 {
 		sort.SliceStable(best, func(i, j int) bool {
 			if best[i].worst != best[j].worst {

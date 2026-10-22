@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -108,58 +109,11 @@ func cmdLs(args []string) int {
 	w := ui.Stdout
 	B, D, G, R, Z := ui.Bold, ui.Dim, ui.Green, ui.Red, ui.Reset
 
-	pin := pinnedAcc()
-	orMain := func(s string) string {
-		if s == "" {
-			return "main"
-		}
-		return s
-	}
-	fmt.Fprintf(w, "%s%s%s  %s  %s(%s)%s\n", B, i18n.T("ls_global"), Z, orMain(pin), D, settingsLabel(), Z)
-
-	// The GUI runs in folder [0] of the workspace, not where you stand. This
-	// line goes BEFORE "HERE": someone who just pinned the workspace and then
-	// reads "HERE <other account>" would think the pin did not take.
-	cwd := fsx.Cwd()
-	gt, _ := resolveTarget(fsx.LogicalCwd())
-	gdir, gnote := gt.dir, gt.note
-	hasGUI := false
-	if gdir != "" && gdir != cwd {
-		hasGUI = true
-		gpin := repoPin(gdir)
-		if gpin == "" {
-			gpin = orMain(pin)
-		}
-		extra := ""
-		if gnote != "" {
-			extra = " — " + gnote
-		}
-		fmt.Fprintf(w, "%s%s%s  %s  %s(%s%s)%s\n", B, i18n.T("ls_gui"), Z, gpin, D, gdir, extra, Z)
-	}
-
-	// Which account is really in effect running claude HERE? Repo settings
-	// only apply in the very directory that holds them.
-	hp := repoPin(cwd)
-	hf := repoFile(cwd)
-	var noteHere string
-	switch {
-	case hp != "" && fsx.IsLink(hf):
-		// Shares its pin file with another directory — say so, or it reads
-		// like a pin of its own.
-		noteHere = i18n.Tp("ls_shared_with", filepath.Dir(filepath.Dir(fsx.RealPath(hf))))
-	case hp != "":
-		noteHere = i18n.Tp("ls_pin_of", cwd)
-	case hasGUI:
-		noteHere = i18n.T("ls_here_term")
-	default:
-		noteHere = i18n.T("ls_nopin")
-	}
-	herePin := hp
-	if herePin == "" {
-		herePin = orMain(pin)
-	}
-	fmt.Fprintf(w, "%s%s%s  %s  %s(%s)%s\n", B, i18n.T("ls_here"), Z, herePin, D, noteHere, Z)
+	global := globalAcc()
+	fmt.Fprintf(w, "%s%s%s  %s  %s(%s)%s\n", B, i18n.T("ls_global"), Z, global, D, settingsLabel(), Z)
+	printWhere(w, global)
 	fmt.Fprintln(w)
+	cwd := fsx.Cwd()
 
 	fmt.Fprintf(w, "%smain%s      %s%s%s\n", B, Z, D, usageCached("main"), Z)
 	fmt.Fprintf(w, "        %s(%s)%s\n", D, i18n.T("ls_main_desc"), Z)
@@ -191,6 +145,56 @@ func cmdLs(args []string) int {
 		listPins(cwd)
 	}
 	return 0
+}
+
+// printWhere prints which account is in effect where you stand: the GUI row
+// when the workspace runs claude in another folder, then the HERE row.
+// global is the global account ("main" when none is pinned).
+func printWhere(w io.Writer, global string) {
+	B, D, Z := ui.Bold, ui.Dim, ui.Reset
+
+	// The GUI runs in folder [0] of the workspace, not where you stand. This
+	// line goes BEFORE "HERE": someone who just pinned the workspace and then
+	// reads "HERE <other account>" would think the pin did not take.
+	cwd := fsx.Cwd()
+	gt, _ := resolveTarget(fsx.LogicalCwd())
+	gdir, gnote := gt.dir, gt.note
+	hasGUI := false
+	if gdir != "" && gdir != cwd {
+		hasGUI = true
+		gpin := repoPin(gdir)
+		if gpin == "" {
+			gpin = global
+		}
+		extra := ""
+		if gnote != "" {
+			extra = " — " + gnote
+		}
+		fmt.Fprintf(w, "%s%s%s  %s  %s(%s%s)%s\n", B, i18n.T("ls_gui"), Z, gpin, D, gdir, extra, Z)
+	}
+
+	// Which account is really in effect running claude HERE? Repo settings
+	// only apply in the very directory that holds them.
+	hp := repoPin(cwd)
+	hf := repoFile(cwd)
+	var noteHere string
+	switch {
+	case hp != "" && fsx.IsLink(hf):
+		// Shares its pin file with another directory — say so, or it reads
+		// like a pin of its own.
+		noteHere = i18n.Tp("ls_shared_with", filepath.Dir(filepath.Dir(fsx.RealPath(hf))))
+	case hp != "":
+		noteHere = i18n.Tp("ls_pin_of", cwd)
+	case hasGUI:
+		noteHere = i18n.T("ls_here_term")
+	default:
+		noteHere = i18n.T("ls_nopin")
+	}
+	herePin := hp
+	if herePin == "" {
+		herePin = global
+	}
+	fmt.Fprintf(w, "%s%s%s  %s  %s(%s)%s\n", B, i18n.T("ls_here"), Z, herePin, D, noteHere, Z)
 }
 
 // listPins prints the registry. Folders of one workspace are not listed side

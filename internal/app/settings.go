@@ -33,6 +33,14 @@ func pinnedAcc() string {
 	return env.String(envName)
 }
 
+// globalAcc is the global account by name: pinnedAcc, with main spelled out.
+func globalAcc() string {
+	if a := pinnedAcc(); a != "" {
+		return a
+	}
+	return "main"
+}
+
 // backupSettings copies settings.json to .bak-claude-acc, created 0600 from
 // the first byte: the copy holds a token too.
 func backupSettings() {
