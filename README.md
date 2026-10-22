@@ -147,7 +147,7 @@ Want this one repo on a different account than everything else? Same command, pl
 `--here`:
 
 ```bash
-cd ~/code/some-repo
+cd some-repo
 claude-acc switch personal --here   # only this repo; the global account is untouched
 ```
 
@@ -196,7 +196,7 @@ one on another, so no single account eats the whole limit — pin an account to 
 directory instead:
 
 ```bash
-cd ~/work/some-repo
+cd some-repo
 claude-acc switch work --here   # this repo uses "work"
 claude-acc switch main --here   # this repo uses main (the Keychain account)
 claude-acc switch off --here    # unpin; back to whatever plain `switch` says
