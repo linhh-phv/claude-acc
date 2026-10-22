@@ -51,7 +51,7 @@ func stored(t *testing.T, name string) string {
 
 func TestVersionAndHelp(t *testing.T) {
 	s := newSandbox(t)
-	want(t, s.ok(s.w, "", "version").stdout, "claude-acc 2.0.1")
+	want(t, s.ok(s.w, "", "version").stdout, "claude-acc 2.0.2")
 	h := s.ok(s.w, "", "help").stdout
 	want(t, h, "Credential Manager")
 	want(t, h, "Invoke-Expression")

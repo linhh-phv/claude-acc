@@ -498,7 +498,7 @@ func TestParity(t *testing.T) {
 			g := s.run([]string{goBin}, cwd, sc.args, sc.stdin, lang)
 
 			// The version is the one difference everywhere.
-			b.stdout = strings.ReplaceAll(b.stdout, "1.0.0", "2.0.1")
+			b.stdout = strings.ReplaceAll(b.stdout, "1.0.0", "2.0.2")
 			for _, r := range []*result{&b, &g} {
 				r.claudeLog = tmpNames.ReplaceAllString(r.claudeLog, "claude-acc-refresh.X")
 			}

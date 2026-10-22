@@ -23,7 +23,7 @@ Mở **một cửa sổ PowerShell mới**, gõ:
 claude-acc version
 ```
 
-Thấy `claude-acc 2.0.1` là cài xong.
+Thấy `claude-acc 2.0.2` là cài xong.
 
 Không muốn dán lệnh? Tải `claude-acc-windows-amd64.zip` (máy chip ARM: `…-arm64.zip`) ở
 [bản phát hành mới nhất](https://github.com/linhh-phv/claude-acc/releases/latest), giải nén,
