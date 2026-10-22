@@ -64,7 +64,7 @@ irm https://raw.githubusercontent.com/linhh-phv/claude-acc/main/install.ps1 | ie
 Then open a **new** PowerShell window and check:
 
 ```powershell
-claude-acc version        # claude-acc 2.0.1
+claude-acc version        # claude-acc 2.0.2
 ```
 
 Rather not paste a command? Download `claude-acc-windows-amd64.zip` (`…-arm64.zip` on an ARM

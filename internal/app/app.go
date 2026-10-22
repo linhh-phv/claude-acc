@@ -13,7 +13,7 @@ import (
 )
 
 // Version of claude-acc.
-const Version = "2.0.1"
+const Version = "2.0.2"
 
 // Run executes one command line and returns the exit code.
 func Run(args []string) int {
