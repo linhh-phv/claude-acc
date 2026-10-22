@@ -312,9 +312,16 @@ running its clock — and asking is itself a request.
  * personal  ..........   2%  11:00 (52m left)    0%  11/09 (6 days left)
  * main      #####.....  50%  13:30 (3h22 left)  19%  05/09 (9h52 left)
 
+HERE      work  (pin of …/some-repo)
+
 Most headroom: personal (5h only 2% used)
   -> use it for the repo you are in:  claude-acc switch personal --here
 ```
+
+The `HERE` row is the one `ls` prints: the account in effect where you stand, so you can
+read its quota off the table without a second command. In a folder of a multi-root
+workspace that is not folder `[0]`, a `GUI` row above it names the account the chat tabs
+use, as in `ls`.
 
 It reads `anthropic-ratelimit-unified-*` off a one-token request, so the numbers are the
 real thing rather than a local guess — including when an account is already out, because
@@ -348,7 +355,7 @@ That's why `claude-acc ls` can show an email for `main` but not for token accoun
 | `switch <name\|main\|off> --here` | Pin an account to the current repo/workspace, independent of the global one. `--at <dir>` targets another directory, `--no-check` skips the verifying API call. Also spelled `here <name>`. |
 | `reassign <old> <new>` | Move every pinned directory from one account to another — for when `<old>` is near its limit. |
 | `sync` | Rewrite the token in every pinned directory (after re-adding an account), and drop directories that no longer exist. |
-| `usage [name...]` | Show 5h / 7d utilization and reset times per account, and suggest the one with most headroom. Costs one request per account (9 tokens), which also starts that account's 5-hour window. Also spelled `quota`, `trigger`, `warm`. |
+| `usage [name...]` | Show 5h / 7d utilization and reset times per account, which account is in effect where you're standing, and suggest the one with most headroom. Costs one request per account (9 tokens), which also starts that account's 5-hour window. Also spelled `quota`, `trigger`, `warm`. |
 | `lang [vi\|en\|auto]` | Show or change the language of every message, `help` included. Defaults to the system `LANG`, falling back to English. |
 | `ls` | List configured accounts, which one is active globally, which is in effect where you're standing, and every directory pin. Shows each account's last known 5h / 7d usage with the age of that reading — read from cache, so `ls` never spends a request or starts a window. |
 | `check <name\|main>` | Verify an account's credential still works, with a real API call — not just a config read. |

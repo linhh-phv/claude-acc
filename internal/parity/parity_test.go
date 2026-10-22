@@ -345,9 +345,9 @@ var scenarios = []scenario{
 		s.token("err", "tok-500")
 		s.usageCache("zed\t1\t0.1\t1\tallowed\t0.1\t1\tallowed", "work\t1\t0.9\t1\tallowed\t0.9\t1\tallowed")
 		return s.w
-	}},
-	{name: "usage-vi", lang: "vi_VN.UTF-8", args: []string{"quota", "play", "work"}, setup: func(s *sandbox) string { std(s); return s.w }},
-	{name: "usage-one", args: []string{"usage", "work"}, setup: func(s *sandbox) string { std(s); return s.w }},
+	}, fix: hereInUsage},
+	{name: "usage-vi", lang: "vi_VN.UTF-8", args: []string{"quota", "play", "work"}, setup: func(s *sandbox) string { std(s); return s.w }, fix: hereInUsage},
+	{name: "usage-one", args: []string{"usage", "work"}, setup: func(s *sandbox) string { std(s); return s.w }, fix: hereInUsage},
 	{name: "usage-flag", args: []string{"usage", "-x"}, setup: func(s *sandbox) string { std(s); return s.w }},
 	{name: "usage-unknown", args: []string{"usage", "ghost"}, setup: func(s *sandbox) string { std(s); return s.w }},
 
@@ -447,6 +447,22 @@ func badTokenNotSaved(b, g *result) {
 		b.files["kc/claude-code-token@x"] != "" && g.files["kc/claude-code-token@x"] == "" {
 		*b = *g
 	}
+}
+
+// whereRows are the GUI / HERE rows of `ls`, which 2.x `usage` prints under
+// its table, after a blank line.
+var whereRows = regexp.MustCompile(`\n\n(?:(?:GUI|HERE|TẠI ĐÂY) [^\n]*\n)+`)
+
+// hereInUsage: 2.x usage also says which account is in effect where you
+// stand; 1.x did not. The rows are dropped before comparing the rest — once
+// it is clear they are there (TestUsageSaysWhatIsInEffectHere checks what
+// they say).
+func hereInUsage(b, g *result) {
+	if !whereRows.MatchString(g.stdout) {
+		g.stdout += "\n(no HERE row)\n"
+		return
+	}
+	g.stdout = whereRows.ReplaceAllString(g.stdout, "\n")
 }
 
 // noConfigForHelp: help no longer creates the (empty) config files.
