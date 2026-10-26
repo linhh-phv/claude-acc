@@ -50,7 +50,7 @@ On Windows with a binary you were handed: `.\install.ps1 -From .\claude-acc-wind
 
 ### Windows: step by step
 
-*Tiếng Việt: [docs/windows-vi.md](docs/windows-vi.md).*
+*Tiếng Việt: [docs/guides/windows-vi.md](docs/guides/windows-vi.md).*
 
 You need Windows 10 or 11 and Claude Code installed **and signed in** (`claude` runs in
 PowerShell). That signed-in account is **main**.
