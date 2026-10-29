@@ -195,6 +195,29 @@ func printWhere(w io.Writer, global string) {
 		herePin = global
 	}
 	fmt.Fprintf(w, "%s%s%s  %s  %s(%s)%s\n", B, i18n.T("ls_here"), Z, herePin, D, noteHere, Z)
+
+	// Pins Claude Code 2.1.312 would not honour, under the rows claiming them.
+	dirs := []string{cwd}
+	if hasGUI && hp == "" {
+		dirs = []string{gdir}
+	}
+	for _, d := range dirs {
+		if n := pinWarning(d, global); n != "" {
+			fmt.Fprintf(w, "%s%s%s\n", ui.Yellow, n, Z)
+		}
+	}
+}
+
+// pinWarning says why the pin at dir would not apply on Claude Code
+// 2.1.312, or "".
+func pinWarning(dir, global string) string {
+	switch p := repoPin(dir); {
+	case p == "main" && global != "main":
+		return i18n.Tp("pin_main_ignored", global, global)
+	case pinOutdated(dir):
+		return i18n.T("pin_outdated")
+	}
+	return ""
 }
 
 // listPins prints the registry. Folders of one workspace are not listed side

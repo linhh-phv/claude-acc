@@ -111,6 +111,9 @@ func cmdHere(args []string) int {
 	}
 
 	ui.Info(ui.Bold + i18n.T("here_now") + ui.Reset + i18n.T("here_now2"))
+	if g := globalAcc(); name == "main" && g != "main" {
+		ui.Info(ui.Yellow + i18n.Tp("pin_main_ignored", g, g) + ui.Reset)
+	}
 	if !check {
 		return 0
 	}

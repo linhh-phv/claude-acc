@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/linhh-phv/claude-acc/internal/i18n"
 )
 
 // secondsAgo hides the age of a usage reading in seconds: the two `ls` runs
@@ -62,6 +64,12 @@ func TestUpgradeKeepsAccounts(t *testing.T) {
 	// ---- 2. the new version sees exactly the same world
 	lsB := step(bash, r1, "", "ls")
 	lsG := step(gobin, r1, "", "ls")
+	// 1.x pins lack ANTHROPIC_AUTH_TOKEN: 2.x says to run sync, then is the same.
+	i18n.Lang = "vi"
+	if !strings.Contains(lsG.stdout, "TẠI ĐÂY   play  (ghim của "+r1+")\n"+i18n.T("pin_outdated")+"\n") {
+		t.Errorf("go ls does not ask for sync under a 1.x pin:\n%s", lsG.stdout)
+	}
+	dropPinWarnings(&lsG)
 	sameLs(t, "after upgrade", lsB, lsG)
 	for _, want := range []string{"✓ work", "✓ play", "TẠI ĐÂY   play", "TOÀN CỤC  work", "~"} {
 		if !strings.Contains(lsG.stdout, want) {
@@ -80,8 +88,8 @@ func TestUpgradeKeepsAccounts(t *testing.T) {
 	if got := s.snapshot()["w/hub/b/.claude/settings.local.json"]; got != "symlink -> "+filepath.Join(a, ".claude", "settings.local.json") {
 		t.Errorf("workspace link was not kept: %q", got)
 	}
-	if got := s.snapshot()["w/hub/a/.claude/settings.local.json"]; !strings.Contains(got, "PLAYtoken") {
-		t.Errorf("folder [0] did not move to play: %q", got)
+	if got := s.snapshot()["w/hub/a/.claude/settings.local.json"]; !strings.Contains(got, `"ANTHROPIC_AUTH_TOKEN": "sk-ant-oat01-PLAYtoken_XYZ-789"`) {
+		t.Errorf("folder [0] did not move to play under both keys: %q", got)
 	}
 
 	// ---- 3. and the old version still reads what the new one wrote

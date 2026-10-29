@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/linhh-phv/claude-acc/internal/i18n"
 )
 
 var apiSpecs = map[string]apiSpec{
@@ -465,6 +467,49 @@ func hereInUsage(b, g *result) {
 	g.stdout = whereRows.ReplaceAllString(g.stdout, "\n")
 }
 
+// oauthTok / authTok: the token keys of a pin, as both versions write them.
+var (
+	oauthTok = regexp.MustCompile(`"CLAUDE_CODE_OAUTH_TOKEN": "([^"]*)"`)
+	authTok  = regexp.MustCompile(`,\s*"ANTHROPIC_AUTH_TOKEN": "([^"]*)"`)
+)
+
+// pinWarnings matches the lines 2.x prints under a pin Claude Code 2.1.312
+// would not honour, in both languages.
+var pinWarnings = func() *regexp.Regexp {
+	old := i18n.Lang
+	defer func() { i18n.Lang = old }()
+	var alts []string
+	for _, l := range []string{"en", "vi"} {
+		i18n.Lang = l
+		for _, k := range []string{"pin_main_ignored", "pin_outdated", "sw_main_pins"} {
+			alts = append(alts, strings.ReplaceAll(regexp.QuoteMeta(i18n.T(k)), "%s", `[^\n]*`))
+		}
+	}
+	return regexp.MustCompile(`(?m)^(?:` + strings.Join(alts, "|") + `)\n`)
+}()
+
+// dropPinWarnings removes those lines from an output.
+func dropPinWarnings(r *result) {
+	r.stdout = pinWarnings.ReplaceAllString(r.stdout, "")
+	r.stderr = pinWarnings.ReplaceAllString(r.stderr, "")
+}
+
+// authInPins: 2.x pins a token account under ANTHROPIC_AUTH_TOKEN too —
+// Claude Code 2.1.312 ignores CLAUDE_CODE_OAUTH_TOKEN in repo settings — and
+// says so under a pin it would not honour. 1.x did neither. The second key
+// is dropped where it repeats the first; TestPinForNewClaudeCode checks the
+// rest.
+func authInPins(g *result) {
+	for f, c := range g.files {
+		m := oauthTok.FindStringSubmatch(c)
+		a := authTok.FindStringSubmatch(c)
+		if m != nil && a != nil && m[1] == a[1] {
+			g.files[f] = strings.Replace(c, a[0], "", 1)
+		}
+	}
+	dropPinWarnings(g)
+}
+
 // noConfigForHelp: help no longer creates the (empty) config files.
 func noConfigForHelp(b, g *result) {
 	for _, f := range []string{"home/.config/claude-acc/accounts", "home/.config/claude-acc/repos"} {
@@ -503,6 +548,7 @@ func TestParity(t *testing.T) {
 				r.claudeLog = tmpNames.ReplaceAllString(r.claudeLog, "claude-acc-refresh.X")
 			}
 			b.stderr = traceback.ReplaceAllString(b.stderr, "")
+			authInPins(&g)
 			if sc.fix != nil {
 				sc.fix(&b, &g)
 			}

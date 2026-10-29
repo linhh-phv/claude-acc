@@ -23,9 +23,22 @@ import (
 //     does not wipe the permissions/MCP already in the file.
 //   - Repo-level settings only apply when `claude` runs IN that directory —
 //     a subdirectory does not inherit them.
+//
+// Measured 2026-10-29 (fake API logging the bearer, then the real API):
+//   - Claude Code 2.1.312 ignores CLAUDE_CODE_OAUTH_TOKEN in repo-level
+//     settings; 2.1.300 did not. The same token as ANTHROPIC_AUTH_TOKEN there
+//     is used by both, beats the global CLAUDE_CODE_OAUTH_TOKEN, is re-read
+//     mid-session like the global one, and the API bills it to the
+//     account's plan exactly as before (same unified 5h/7d headers).
+//   - Nothing at repo level makes 2.1.312 drop the global token, so a main
+//     pin (empty token) only works while the global account is main.
+//
+// A token pin therefore carries both keys: CLAUDE_CODE_OAUTH_TOKEN for 1.x
+// and older Claude Code, ANTHROPIC_AUTH_TOKEN for 2.1.312 on.
 
 const (
 	envToken = "CLAUDE_CODE_OAUTH_TOKEN"
+	envAuth  = "ANTHROPIC_AUTH_TOKEN"
 	envName  = "CLAUDE_ACC_NAME"
 	pinRel   = ".claude/settings.local.json"
 )
@@ -123,12 +136,19 @@ func writeRepoPinErr(dir, name, tok string) error {
 	if err != nil {
 		return err
 	}
-	if name == "off" {
+	switch name {
+	case "off":
 		env.Delete(envToken)
 		env.Delete(envName)
-	} else {
-		env.Set(envToken, tok) // "" when name == main
+		env.Delete(envAuth)
+	case "main":
+		env.Set(envToken, "") // falls back to the stored credential
 		env.Set(envName, name)
+		env.Delete(envAuth)
+	default:
+		env.Set(envToken, tok)
+		env.Set(envName, name)
+		env.Set(envAuth, tok)
 	}
 	if env.Len() > 0 {
 		d.Set("env", env)
@@ -249,11 +269,29 @@ func onlyPin(path string) bool {
 		return false
 	}
 	for _, k := range env.Keys() {
-		if k != envToken && k != envName {
+		if k != envToken && k != envName && k != envAuth {
 			return false
 		}
 	}
 	return true
+}
+
+// pinOutdated: a token pin written before ANTHROPIC_AUTH_TOKEN, which
+// Claude Code 2.1.312 ignores until `sync` rewrites it.
+func pinOutdated(dir string) bool {
+	p := repoPin(dir)
+	if p == "" || p == "main" {
+		return false
+	}
+	d, err := loadObject(repoFile(dir))
+	if err != nil {
+		return false
+	}
+	env, err := envOf(d)
+	if err != nil {
+		return false
+	}
+	return env.String(envAuth) == "" || env.String(envAuth) != env.String(envToken)
 }
 
 // homeElsewhere reports whether folder f of root's workspace is folder [0]

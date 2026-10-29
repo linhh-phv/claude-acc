@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/linhh-phv/claude-acc/internal/api"
 	"github.com/linhh-phv/claude-acc/internal/fsx"
@@ -37,6 +38,17 @@ func cmdSwitch(args []string) int {
 	ui.Info(ui.Bold + i18n.T("sw_now") + ui.Reset)
 	ui.Info(ui.Dim + i18n.T("sw_now2") + ui.Reset)
 	ui.Info(ui.Dim + i18n.T("sw_now3") + ui.Reset)
+	if name != "main" {
+		mains := 0
+		for _, r := range regRows() {
+			if r.acc == "main" && fsx.IsDir(r.dir) {
+				mains++
+			}
+		}
+		if mains > 0 {
+			ui.Info(ui.Yellow + i18n.Tp("sw_main_pins", strconv.Itoa(mains), name) + ui.Reset)
+		}
+	}
 
 	// ...except directories pinned on their own: a repo pin beats the global
 	// one. Standing in one of those and saying nothing, the user would think

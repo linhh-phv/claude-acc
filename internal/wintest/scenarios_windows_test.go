@@ -142,6 +142,8 @@ func TestRepoPin(t *testing.T) {
 	want(t, r.stderr, `Pinned "work"`)
 	pin := s.read(filepath.Join(r1, ".claude", "settings.local.json"))
 	want(t, pin, tokWork)
+	// Claude Code 2.1.312 reads a repo pin only under this key.
+	want(t, pin, `"ANTHROPIC_AUTH_TOKEN": "`+tokWork+`"`)
 	want(t, s.read(filepath.Join(r1, ".git", "info", "exclude")), ".claude/settings.local.json")
 	want(t, s.ok(r1, "", "ls").stdout, "HERE      work")
 
@@ -149,7 +151,9 @@ func TestRepoPin(t *testing.T) {
 	wantNot(t, string(gs), "settings.local.json")
 
 	s.ok(r1, "", "here", "off")
-	wantNot(t, s.read(filepath.Join(r1, ".claude", "settings.local.json")), "CLAUDE_ACC_NAME")
+	off := s.read(filepath.Join(r1, ".claude", "settings.local.json"))
+	wantNot(t, off, "CLAUDE_ACC_NAME")
+	wantNot(t, off, "ANTHROPIC_AUTH_TOKEN")
 }
 
 func TestWorkspaceAll(t *testing.T) {

@@ -213,6 +213,10 @@ var vi = map[string]string{
 	"lang_set":      "Đã chuyển sang: %s",
 	"lang_set_auto": "Đã bỏ chọn tay — tự nhận từ hệ thống: %s",
 	"lang_bad":      "chỉ nhận: vi | en | auto",
+
+	"pin_main_ignored": "! Claude Code 2.1.312+ không giữ được main ở đây khi acc toàn cục là \"%s\" — ở đây vẫn chạy \"%s\". Muốn main ở đây: claude-acc switch main (toàn cục), rồi ghim acc phụ cho các repo khác.",
+	"pin_outdated":     "! Ghim này do claude-acc bản cũ ghi — Claude Code 2.1.312+ bỏ qua nó. Sửa: claude-acc sync",
+	"sw_main_pins":     "! %s thư mục ghim main sẽ chạy \"%s\" trên Claude Code 2.1.312+ (ghim main chỉ ăn khi main là acc toàn cục).",
 }
 
 var en = map[string]string{
@@ -426,4 +430,8 @@ var en = map[string]string{
 	"lang_set":      "Switched to: %s",
 	"lang_set_auto": "Manual choice cleared — following the system: %s",
 	"lang_bad":      "expected one of: vi | en | auto",
+
+	"pin_main_ignored": "! Claude Code 2.1.312+ cannot keep main here while the global account is \"%s\" — this runs on \"%s\". For main here: claude-acc switch main (global), and pin token accounts to the other repos.",
+	"pin_outdated":     "! This pin was written by an older claude-acc — Claude Code 2.1.312+ ignores it. Fix: claude-acc sync",
+	"sw_main_pins":     "! %s directories pinned to main run on \"%s\" with Claude Code 2.1.312+ (a main pin only works while main is the global account).",
 }
