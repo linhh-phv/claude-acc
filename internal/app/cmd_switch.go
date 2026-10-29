@@ -39,14 +39,14 @@ func cmdSwitch(args []string) int {
 	ui.Info(ui.Dim + i18n.T("sw_now2") + ui.Reset)
 	ui.Info(ui.Dim + i18n.T("sw_now3") + ui.Reset)
 	if name != "main" {
-		mains := 0
+		mains := map[string]bool{} // pin files, once each
 		for _, r := range regRows() {
-			if r.acc == "main" && fsx.IsDir(r.dir) {
-				mains++
+			if fsx.IsDir(r.dir) && repoPin(r.dir) == "main" {
+				mains[fsx.RealPath(repoFile(r.dir))] = true
 			}
 		}
-		if mains > 0 {
-			ui.Info(ui.Yellow + i18n.Tp("sw_main_pins", strconv.Itoa(mains), name) + ui.Reset)
+		if len(mains) > 0 {
+			ui.Info(ui.Yellow + i18n.Tp("sw_main_pins", strconv.Itoa(len(mains)), name) + ui.Reset)
 		}
 	}
 

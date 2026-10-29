@@ -311,7 +311,9 @@ func cmdUninstall(args []string) int {
 		if r.dir == "" || !fsx.IsDir(r.dir) {
 			continue
 		}
-		if writeRepoPinErr(r.dir, "off", "") != nil {
+		// Twice: the first leaves an empty ANTHROPIC_AUTH_TOKEN for running
+		// sessions to let go of the token, the second drops it.
+		if writeRepoPinErr(r.dir, "off", "") != nil || writeRepoPinErr(r.dir, "off", "") != nil {
 			ui.Info(ui.Yellow + i18n.Tp("un_cantclean", repoFile(r.dir)) + ui.Reset)
 		}
 	}

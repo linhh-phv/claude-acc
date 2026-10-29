@@ -117,10 +117,17 @@ func repoPin(dir string) string {
 // overrides the inherited token and falls back to the stored credential),
 // "off" removes the pin. Merges into an existing file, atomically, 0600.
 func writeRepoPin(dir, name, tok string) {
-	if err := writeRepoPinErr(dir, name, tok); err != nil {
+	if err := writeRepoPinErr(dir, name, tok); err == errForeignAuth {
+		ui.Die(i18n.Tp("err_foreign_auth", repoFile(dir)))
+	} else if err != nil {
 		ui.Die(i18n.Tp("err_write_repo", repoFile(dir)))
 	}
 }
+
+// errForeignAuth: the directory sets an ANTHROPIC_AUTH_TOKEN of its own,
+// which a pin would have to replace — and Claude Code would send it in
+// place of the pinned token if it stayed.
+var errForeignAuth = errors.New("the directory has its own ANTHROPIC_AUTH_TOKEN")
 
 func writeRepoPinErr(dir, name, tok string) error {
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0o755)
@@ -136,16 +143,32 @@ func writeRepoPinErr(dir, name, tok string) error {
 	if err != nil {
 		return err
 	}
+	// ANTHROPIC_AUTH_TOKEN is the directory's own (a gateway key, say) unless
+	// it repeats the pinned token or is the empty value left below.
+	auth := env.String(envAuth)
+	ours := auth == "" || auth == env.String(envToken)
 	switch name {
 	case "off":
 		env.Delete(envToken)
 		env.Delete(envName)
-		env.Delete(envAuth)
+		// A running claude keeps a token whose key is removed (measured on
+		// 2.1.300 and 2.1.312); an empty one makes it let go at once. Once
+		// empty, the key can go.
+		if ours && auth != "" {
+			env.Set(envAuth, "")
+		} else if ours {
+			env.Delete(envAuth)
+		}
 	case "main":
 		env.Set(envToken, "") // falls back to the stored credential
 		env.Set(envName, name)
-		env.Delete(envAuth)
+		if ours {
+			env.Set(envAuth, "")
+		}
 	default:
+		if !ours {
+			return errForeignAuth
+		}
 		env.Set(envToken, tok)
 		env.Set(envName, name)
 		env.Set(envAuth, tok)
@@ -273,7 +296,8 @@ func onlyPin(path string) bool {
 			return false
 		}
 	}
-	return true
+	auth := env.String(envAuth)
+	return auth == "" || auth == env.String(envToken)
 }
 
 // pinOutdated: a token pin written before ANTHROPIC_AUTH_TOKEN, which
@@ -330,13 +354,28 @@ func syncWsMembers(root, name, tok string) {
 			ui.Info(ui.Yellow + i18n.Tp("git_skip", f) + ui.Reset)
 			continue
 		}
-		writeRepoPin(f, name, tok)
+		if !writeMemberPin(f, name, tok) {
+			continue
+		}
 		regSet(f, name)
 		n++
 	}
 	if n > 0 {
 		ui.Info(ui.Dim + i18n.Tp("share_merged_n", strconv.Itoa(n)) + ui.Reset)
 	}
+}
+
+// writeMemberPin pins one more folder of a workspace. A folder setting its
+// own ANTHROPIC_AUTH_TOKEN is left out, and said so, rather than stopping
+// the rest.
+func writeMemberPin(f, name, tok string) bool {
+	if err := writeRepoPinErr(f, name, tok); err == errForeignAuth {
+		ui.Info(ui.Yellow + i18n.Tp("err_foreign_auth", repoFile(f)) + ui.Reset)
+		return false
+	} else if err != nil {
+		ui.Die(i18n.Tp("err_write_repo", repoFile(f)))
+	}
+	return true
 }
 
 // shareWorkspace makes every other folder of the workspace use folder [0]'s
@@ -375,7 +414,10 @@ func shareWorkspace(root, accName, accTok string) {
 					skipped++
 					continue
 				}
-				writeRepoPin(f, accName, accTok)
+				if !writeMemberPin(f, accName, accTok) {
+					skipped++
+					continue
+				}
 				regSet(f, accName)
 				if onlyPin(target) {
 					copied++

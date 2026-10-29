@@ -143,8 +143,24 @@ func cmdLs(args []string) int {
 	if fsx.NonEmpty(reposFile) {
 		fmt.Fprintf(w, "\n%s%s%s %s(%s)%s\n", B, i18n.T("ls_pins"), Z, D, i18n.T("ls_pins_hint"), Z)
 		listPins(cwd)
+		if n := outdatedPins(); n > 0 {
+			fmt.Fprintf(w, "%s%s%s\n", ui.Yellow, i18n.Tp("ls_pins_outdated", strconv.Itoa(n)), Z)
+		}
 	}
 	return 0
+}
+
+// outdatedPins counts the pin files, once each (a workspace shares one
+// through links), that still lack ANTHROPIC_AUTH_TOKEN.
+func outdatedPins() int {
+	seen := map[string]bool{}
+	for _, r := range regRows() {
+		if r.dir == "" || !fsx.IsDir(r.dir) || !pinOutdated(r.dir) {
+			continue
+		}
+		seen[fsx.RealPath(repoFile(r.dir))] = true
+	}
+	return len(seen)
 }
 
 // printWhere prints which account is in effect where you stand: the GUI row

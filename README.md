@@ -121,7 +121,7 @@ directions are covered by a test (`TestUpgradeKeepsAccounts`) that sets accounts
 up with 1.x, uses them with 2.x, then reads them back with 1.x. The one addition: a token
 pin also holds `ANTHROPIC_AUTH_TOKEN`, which Claude Code 2.1.312 needs ([why](#why-a-pin-holds-the-token-twice)).
 Pins made before have only the old key — run `claude-acc sync` once after upgrading;
-until then `ls` and `usage` remind you under each one.
+until then `ls` says how many are left, and `ls` and `usage` flag the one where you stand.
 
 ## Quick start
 
@@ -227,11 +227,22 @@ API, on 2.1.300 and 2.1.312:
 | `ANTHROPIC_AUTH_TOKEN`, same token | used | used |
 
 `ANTHROPIC_AUTH_TOKEN` beats the global token, is re-read mid-session (change it between
-two turns and the second goes out on the new one), and the API bills it to the account's
-plan exactly as before — the same `anthropic-ratelimit-unified-5h/7d` headers come back.
-So a token pin carries both keys, with the same token. One thing differs: with no `model`
-set, Claude Code picks a different default model under `ANTHROPIC_AUTH_TOKEN` (measured:
-Opus instead of Sonnet). Set `model` if that matters to you.
+two turns and the second goes out on the new one — about a second after the file
+changes), and the API bills it to the account's plan exactly as before: the same
+`anthropic-ratelimit-unified-5h/7d` headers come back. So a token pin carries both keys,
+with the same token. One thing differs: with no `model` set, Claude Code picks a different
+default model under `ANTHROPIC_AUTH_TOKEN` (measured: Opus instead of Sonnet). Set `model`
+if that matters to you.
+
+Two details follow from it:
+
+- **`off` and `main` leave `"ANTHROPIC_AUTH_TOKEN": ""` behind.** Measured: a running
+  session keeps a token whose key is *removed* from the file, but drops one that is
+  *emptied* — so emptying is what moves an open chat tab off the token account at once.
+  The next `off` removes the empty key.
+- **A repo that sets an `ANTHROPIC_AUTH_TOKEN` of its own** (a gateway key, say) is not
+  pinned: the pin would have to replace it. `here` says so; `--all` skips that folder and
+  pins the others; `off` and `main` leave such a key alone.
 
 **What 2.1.312 cannot do: keep a directory on `main` while the global account is a token
 one.** A `main` pin is an empty token that hides the global one, and no repo-level setting
@@ -325,7 +336,8 @@ it is not an option. `claude-acc` therefore:
 - cleans the token out of every pinned directory on `claude-acc uninstall`.
 
 `main` is the exception: pinning `main` writes an empty token, which overrides the
-global one and falls back to the Keychain. No secret is written at all.
+global one and falls back to the Keychain — on Claude Code 2.1.312 only while `main` is
+the global account ([why](#why-a-pin-holds-the-token-twice)). No secret is written at all.
 
 ## Seeing how much each account has left
 

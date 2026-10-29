@@ -153,7 +153,9 @@ func TestRepoPin(t *testing.T) {
 	s.ok(r1, "", "here", "off")
 	off := s.read(filepath.Join(r1, ".claude", "settings.local.json"))
 	wantNot(t, off, "CLAUDE_ACC_NAME")
-	wantNot(t, off, "ANTHROPIC_AUTH_TOKEN")
+	wantNot(t, off, tokWork)
+	// emptied rather than removed, so a running session lets go of it
+	want(t, off, `"ANTHROPIC_AUTH_TOKEN": ""`)
 }
 
 func TestWorkspaceAll(t *testing.T) {

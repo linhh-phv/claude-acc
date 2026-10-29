@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/linhh-phv/claude-acc/internal/i18n"
+	"github.com/linhh-phv/claude-acc/internal/pyjson"
 )
 
 var apiSpecs = map[string]apiSpec{
@@ -467,12 +468,6 @@ func hereInUsage(b, g *result) {
 	g.stdout = whereRows.ReplaceAllString(g.stdout, "\n")
 }
 
-// oauthTok / authTok: the token keys of a pin, as both versions write them.
-var (
-	oauthTok = regexp.MustCompile(`"CLAUDE_CODE_OAUTH_TOKEN": "([^"]*)"`)
-	authTok  = regexp.MustCompile(`,\s*"ANTHROPIC_AUTH_TOKEN": "([^"]*)"`)
-)
-
 // pinWarnings matches the lines 2.x prints under a pin Claude Code 2.1.312
 // would not honour, in both languages.
 var pinWarnings = func() *regexp.Regexp {
@@ -481,7 +476,7 @@ var pinWarnings = func() *regexp.Regexp {
 	var alts []string
 	for _, l := range []string{"en", "vi"} {
 		i18n.Lang = l
-		for _, k := range []string{"pin_main_ignored", "pin_outdated", "sw_main_pins"} {
+		for _, k := range []string{"pin_main_ignored", "pin_outdated", "sw_main_pins", "ls_pins_outdated"} {
 			alts = append(alts, strings.ReplaceAll(regexp.QuoteMeta(i18n.T(k)), "%s", `[^\n]*`))
 		}
 	}
@@ -495,17 +490,38 @@ func dropPinWarnings(r *result) {
 }
 
 // authInPins: 2.x pins a token account under ANTHROPIC_AUTH_TOKEN too —
-// Claude Code 2.1.312 ignores CLAUDE_CODE_OAUTH_TOKEN in repo settings — and
-// says so under a pin it would not honour. 1.x did neither. The second key
-// is dropped where it repeats the first; TestPinForNewClaudeCode checks the
-// rest.
+// Claude Code 2.1.312 ignores CLAUDE_CODE_OAUTH_TOKEN in repo settings —
+// leaves it empty on main/off so running sessions let go, and says so under
+// a pin 2.1.312 would not honour. 1.x did none of it. The key is dropped
+// where it is empty or repeats the token (an env or file left empty goes
+// too); TestPinForNewClaudeCode checks the rest.
 func authInPins(g *result) {
 	for f, c := range g.files {
-		m := oauthTok.FindStringSubmatch(c)
-		a := authTok.FindStringSubmatch(c)
-		if m != nil && a != nil && m[1] == a[1] {
-			g.files[f] = strings.Replace(c, a[0], "", 1)
+		mode, body, ok := strings.Cut(c, "] ")
+		if !ok || !strings.HasSuffix(f, "settings.local.json") {
+			continue
 		}
+		d, err := pyjson.ParseObject([]byte(body))
+		if err != nil {
+			continue
+		}
+		v, _ := d.Get("env")
+		env, isObj := v.(*pyjson.Object)
+		if !isObj {
+			continue
+		}
+		if a, has := env.Get("ANTHROPIC_AUTH_TOKEN"); !has || (a != "" && a != env.String("CLAUDE_CODE_OAUTH_TOKEN")) {
+			continue
+		}
+		env.Delete("ANTHROPIC_AUTH_TOKEN")
+		if env.Len() == 0 {
+			d.Delete("env")
+		}
+		if d.Len() == 0 {
+			delete(g.files, f)
+			continue
+		}
+		g.files[f] = mode + "] " + string(pyjson.Dump(d)) + "\n"
 	}
 	dropPinWarnings(g)
 }

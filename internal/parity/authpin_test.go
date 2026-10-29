@@ -60,11 +60,12 @@ func TestPinForNewClaudeCode(t *testing.T) {
 		t.Errorf("after reassign:\n%s", got)
 	}
 
-	// main: no ANTHROPIC_AUTH_TOKEN — and fine while main is the global account.
+	// main: ANTHROPIC_AUTH_TOKEN emptied, so a running session drops the
+	// token it had — and fine while main is the global account.
 	if h := run(r1, "here", "main", "--no-check"); strings.Contains(h.stderr, "! ") {
 		t.Errorf("warning for main under a main global:\n%s", h.stderr)
 	}
-	if got := read(r1); strings.Contains(got, "ANTHROPIC_AUTH_TOKEN") || !strings.Contains(got, `"CLAUDE_CODE_OAUTH_TOKEN": ""`) {
+	if got := read(r1); !strings.Contains(got, `"ANTHROPIC_AUTH_TOKEN": ""`) || !strings.Contains(got, `"CLAUDE_CODE_OAUTH_TOKEN": ""`) {
 		t.Errorf("main pin:\n%s", got)
 	}
 
@@ -81,25 +82,80 @@ func TestPinForNewClaudeCode(t *testing.T) {
 		t.Errorf("ls under a main pin with a token global:\n%s", l.stdout)
 	}
 
-	// off takes both keys out, and leaves the rest.
+	// off after main: the empty key goes too, the rest stays.
 	run(r1, "here", "off")
 	if got := read(r1); strings.Contains(got, "TOKEN") || !strings.Contains(got, `"FOO": "1"`) {
 		t.Errorf("after off:\n%s", got)
 	}
 
-	// A pin from before: ls asks for sync, sync fixes it.
+	// off straight from a token pin leaves the key empty for running
+	// sessions; nothing else of the pin.
+	r3 := s.repo("r3")
+	run(r3, "here", "work", "--no-check")
+	run(r3, "here", "off")
+	if got := read(r3); got != "{\n  \"env\": {\n    \"ANTHROPIC_AUTH_TOKEN\": \"\"\n  }\n}\n" {
+		t.Errorf("off from a token pin:\n%s", got)
+	}
+
+	// A directory's own ANTHROPIC_AUTH_TOKEN (a gateway) is never replaced
+	// or removed.
+	r4 := s.repo("r4")
+	own := `{"env": {"ANTHROPIC_BASE_URL": "https://gw.example", "ANTHROPIC_AUTH_TOKEN": "MINE"}}` + "\n"
+	s.writeAbs(filepath.Join(r4, ".claude", "settings.local.json"), own)
+	if h := run(r4, "here", "work", "--no-check"); h.code == 0 || !strings.Contains(h.stderr, i18n.Tp("err_foreign_auth", filepath.Join(r4, ".claude", "settings.local.json"))) {
+		t.Errorf("pin over an own ANTHROPIC_AUTH_TOKEN: %d\n%s", h.code, h.stderr)
+	}
+	if got := read(r4); got != own {
+		t.Errorf("own key touched by a refused pin:\n%s", got)
+	}
+	run(r4, "here", "main", "--no-check")
+	run(r4, "here", "off")
+	if got := read(r4); !strings.Contains(got, `"ANTHROPIC_AUTH_TOKEN": "MINE"`) {
+		t.Errorf("own key lost on main/off:\n%s", got)
+	}
+
+	// ...nor is a workspace folder holding one replaced by --all: skipped,
+	// said so, the others pinned.
+	a, b, c := workspace(s, "ws")
+	s.writeAbs(filepath.Join(b, ".claude", "settings.local.json"), `{"env": {"ANTHROPIC_AUTH_TOKEN": "MINE"}}`+"\n")
+	if h := run(a, "here", "work", "--all", "--no-check"); h.code != 0 || !strings.Contains(h.stderr, "sets an ANTHROPIC_AUTH_TOKEN of its own") {
+		t.Errorf("--all over a folder with its own key: %d\n%s", h.code, h.stderr)
+	}
+	if got := read(b); got != `{"env": {"ANTHROPIC_AUTH_TOKEN": "MINE"}}`+"\n" {
+		t.Errorf("--all replaced a folder's own key:\n%s", got)
+	}
+	if got := read(c); !strings.Contains(got, `"ANTHROPIC_AUTH_TOKEN": "tok-work"`) {
+		t.Errorf("--all did not pin the other folder:\n%s", got)
+	}
+
+	// switch counts main pins by their files, not the registry.
+	s.registry(r1 + "\tmain")
+	if sw := run(s.w, "switch", "work"); strings.Contains(sw.stderr, "pinned to main") {
+		t.Errorf("switch counted a registry row whose pin is gone:\n%s", sw.stderr)
+	}
+	run(s.w, "switch", "main")
+
+	// A pin from before: ls asks for sync, there and anywhere; sync fixes it,
+	// past a broken file.
 	r2 := s.repo("r2")
 	pin(s, r2, "work", "tok-work")
-	s.registry(r2 + "\twork")
+	broken := s.repo("broken")
+	s.writeAbs(filepath.Join(broken, ".claude", "settings.local.json"), "{bad\n")
+	s.registry(broken+"\twork", r2+"\twork")
 	if l := run(r2, "ls"); !strings.Contains(l.stdout, "HERE      work  (pin of "+r2+")\n"+outdated+"\n") {
 		t.Errorf("ls under an old pin:\n%s", l.stdout)
+	}
+	if l := run(s.dir("elsewhere"), "ls"); !strings.Contains(l.stdout, i18n.Tp("ls_pins_outdated", "1")+"\n") {
+		t.Errorf("ls elsewhere does not count old pins:\n%s", l.stdout)
 	}
 	if u := run(r2, "usage", "work"); !strings.Contains(u.stdout, outdated+"\n") {
 		t.Errorf("usage under an old pin:\n%s", u.stdout)
 	}
-	run(s.w, "sync")
+	if sy := run(s.w, "sync"); !strings.Contains(sy.stderr, i18n.Tp("err_write_repo", filepath.Join(broken, ".claude", "settings.local.json"))) {
+		t.Errorf("sync does not report the broken file:\n%s", sy.stderr)
+	}
 	if got := read(r2); !strings.Contains(got, `"ANTHROPIC_AUTH_TOKEN": "tok-work"`) {
-		t.Errorf("sync did not add the key:\n%s", got)
+		t.Errorf("sync stopped at the broken file, or did not add the key:\n%s", got)
 	}
 	if l := run(r2, "ls"); strings.Contains(l.stdout, outdated) {
 		t.Errorf("still asks for sync after it:\n%s", l.stdout)

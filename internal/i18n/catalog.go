@@ -217,6 +217,8 @@ var vi = map[string]string{
 	"pin_main_ignored": "! Claude Code 2.1.312+ không giữ được main ở đây khi acc toàn cục là \"%s\" — ở đây vẫn chạy \"%s\". Muốn main ở đây: claude-acc switch main (toàn cục), rồi ghim acc phụ cho các repo khác.",
 	"pin_outdated":     "! Ghim này do claude-acc bản cũ ghi — Claude Code 2.1.312+ bỏ qua nó. Sửa: claude-acc sync",
 	"sw_main_pins":     "! %s thư mục ghim main sẽ chạy \"%s\" trên Claude Code 2.1.312+ (ghim main chỉ ăn khi main là acc toàn cục).",
+	"err_foreign_auth": "%s đặt ANTHROPIC_AUTH_TOKEN riêng (của gateway?) — ghim sẽ phải thay nó, nên claude-acc không ghim. Bỏ key đó khỏi file rồi chạy lại.",
+	"ls_pins_outdated": "! %s ghim do claude-acc bản cũ ghi — Claude Code 2.1.312+ bỏ qua chúng. Sửa: claude-acc sync",
 }
 
 var en = map[string]string{
@@ -434,4 +436,6 @@ var en = map[string]string{
 	"pin_main_ignored": "! Claude Code 2.1.312+ cannot keep main here while the global account is \"%s\" — this runs on \"%s\". For main here: claude-acc switch main (global), and pin token accounts to the other repos.",
 	"pin_outdated":     "! This pin was written by an older claude-acc — Claude Code 2.1.312+ ignores it. Fix: claude-acc sync",
 	"sw_main_pins":     "! %s directories pinned to main run on \"%s\" with Claude Code 2.1.312+ (a main pin only works while main is the global account).",
+	"err_foreign_auth": "%s sets an ANTHROPIC_AUTH_TOKEN of its own (a gateway's?) — a pin would replace it, so claude-acc does not pin here. Remove that key from the file and run this again.",
+	"ls_pins_outdated": "! %s pins were written by an older claude-acc — Claude Code 2.1.312+ ignores them. Fix: claude-acc sync",
 }
