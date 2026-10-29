@@ -493,8 +493,8 @@ func dropPinWarnings(r *result) {
 // Claude Code 2.1.312 ignores CLAUDE_CODE_OAUTH_TOKEN in repo settings —
 // leaves it empty on main/off so running sessions let go, and says so under
 // a pin 2.1.312 would not honour. 1.x did none of it. The key is dropped
-// where it is empty or repeats the token (an env or file left empty goes
-// too); TestPinForNewClaudeCode checks the rest.
+// where it repeats the token (empty after off: no token left either; an
+// env or file left empty goes too); TestPinForNewClaudeCode checks the rest.
 func authInPins(g *result) {
 	for f, c := range g.files {
 		mode, body, ok := strings.Cut(c, "] ")
@@ -510,7 +510,7 @@ func authInPins(g *result) {
 		if !isObj {
 			continue
 		}
-		if a, has := env.Get("ANTHROPIC_AUTH_TOKEN"); !has || (a != "" && a != env.String("CLAUDE_CODE_OAUTH_TOKEN")) {
+		if a, has := env.Get("ANTHROPIC_AUTH_TOKEN"); !has || a != env.String("CLAUDE_CODE_OAUTH_TOKEN") {
 			continue
 		}
 		env.Delete("ANTHROPIC_AUTH_TOKEN")

@@ -64,7 +64,9 @@ func cmdHere(args []string) int {
 	}
 
 	if name == "off" {
-		if repoPin(dir) == "" {
+		// What a first off leaves (an empty ANTHROPIC_AUTH_TOKEN) a second
+		// one clears.
+		if repoPin(dir) == "" && !emptyAuthLeft(dir) {
 			ui.Die(i18n.Tp("err_not_pinned", dir))
 		}
 		writeRepoPin(dir, "off", "")

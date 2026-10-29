@@ -96,6 +96,13 @@ func TestPinForNewClaudeCode(t *testing.T) {
 	if got := read(r3); got != "{\n  \"env\": {\n    \"ANTHROPIC_AUTH_TOKEN\": \"\"\n  }\n}\n" {
 		t.Errorf("off from a token pin:\n%s", got)
 	}
+	// ...which a second off clears, file and all.
+	if o := run(r3, "here", "off"); o.code != 0 {
+		t.Errorf("second off: %d\n%s", o.code, o.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(r3, ".claude", "settings.local.json")); !os.IsNotExist(err) {
+		t.Errorf("second off left the file: %q", read(r3))
+	}
 
 	// A directory's own ANTHROPIC_AUTH_TOKEN (a gateway) is never replaced
 	// or removed.
@@ -126,6 +133,14 @@ func TestPinForNewClaudeCode(t *testing.T) {
 	}
 	if got := read(c); !strings.Contains(got, `"ANTHROPIC_AUTH_TOKEN": "tok-work"`) {
 		t.Errorf("--all did not pin the other folder:\n%s", got)
+	}
+	// off in a folder sharing the pin through a link drops that link only.
+	run(s.w, "here", "off", "--at", c)
+	if _, err := os.Lstat(filepath.Join(c, ".claude", "settings.local.json")); !os.IsNotExist(err) {
+		t.Errorf("off --at a linked folder left its link")
+	}
+	if got := read(a); !strings.Contains(got, `"ANTHROPIC_AUTH_TOKEN": "tok-work"`) {
+		t.Errorf("off --at a linked folder unpinned the whole workspace:\n%s", got)
 	}
 
 	// switch counts main pins by their files, not the registry.

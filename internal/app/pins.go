@@ -124,6 +124,34 @@ func writeRepoPin(dir, name, tok string) {
 	}
 }
 
+// emptyAuthLeft: dir's settings hold the empty ANTHROPIC_AUTH_TOKEN an off
+// leaves behind.
+func emptyAuthLeft(dir string) bool {
+	d, err := loadObject(repoFile(dir))
+	if err != nil {
+		return false
+	}
+	env, err := envOf(d)
+	if err != nil {
+		return false
+	}
+	v, ok := env.Get(envAuth)
+	return ok && v == ""
+}
+
+// tryPin pins dir as one of many (sync, reassign, a re-added account, a
+// workspace folder): a file it cannot write is reported, and the rest go on.
+func tryPin(dir, name, tok string) bool {
+	err := writeRepoPinErr(dir, name, tok)
+	switch {
+	case err == errForeignAuth:
+		ui.Info(ui.Red + i18n.Tp("err_foreign_auth", repoFile(dir)) + ui.Reset)
+	case err != nil:
+		ui.Info(ui.Red + i18n.Tp("err_write_repo", repoFile(dir)) + ui.Reset)
+	}
+	return err == nil
+}
+
 // errForeignAuth: the directory sets an ANTHROPIC_AUTH_TOKEN of its own,
 // which a pin would have to replace — and Claude Code would send it in
 // place of the pinned token if it stayed.
@@ -132,6 +160,11 @@ var errForeignAuth = errors.New("the directory has its own ANTHROPIC_AUTH_TOKEN"
 func writeRepoPinErr(dir, name, tok string) error {
 	os.MkdirAll(filepath.Join(dir, ".claude"), 0o755)
 	p := repoFile(dir)
+	// Unpinning one folder of a workspace that shares its pin through a link
+	// drops the link only — writing through it would unpin them all.
+	if name == "off" && fsx.IsLink(p) {
+		return os.Remove(p)
+	}
 	d := pyjson.NewObject()
 	if fsx.Exists(p) {
 		var err error
@@ -354,7 +387,7 @@ func syncWsMembers(root, name, tok string) {
 			ui.Info(ui.Yellow + i18n.Tp("git_skip", f) + ui.Reset)
 			continue
 		}
-		if !writeMemberPin(f, name, tok) {
+		if !tryPin(f, name, tok) {
 			continue
 		}
 		regSet(f, name)
@@ -363,19 +396,6 @@ func syncWsMembers(root, name, tok string) {
 	if n > 0 {
 		ui.Info(ui.Dim + i18n.Tp("share_merged_n", strconv.Itoa(n)) + ui.Reset)
 	}
-}
-
-// writeMemberPin pins one more folder of a workspace. A folder setting its
-// own ANTHROPIC_AUTH_TOKEN is left out, and said so, rather than stopping
-// the rest.
-func writeMemberPin(f, name, tok string) bool {
-	if err := writeRepoPinErr(f, name, tok); err == errForeignAuth {
-		ui.Info(ui.Yellow + i18n.Tp("err_foreign_auth", repoFile(f)) + ui.Reset)
-		return false
-	} else if err != nil {
-		ui.Die(i18n.Tp("err_write_repo", repoFile(f)))
-	}
-	return true
 }
 
 // shareWorkspace makes every other folder of the workspace use folder [0]'s
@@ -414,7 +434,7 @@ func shareWorkspace(root, accName, accTok string) {
 					skipped++
 					continue
 				}
-				if !writeMemberPin(f, accName, accTok) {
+				if !tryPin(f, accName, accTok) {
 					skipped++
 					continue
 				}

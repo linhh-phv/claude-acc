@@ -118,8 +118,10 @@ everything 1.x set up, in the same places and formats:
 
 It also writes those files byte for byte as 1.x did, so going back to 1.x works too. Both
 directions are covered by a test (`TestUpgradeKeepsAccounts`) that sets accounts and pins
-up with 1.x, uses them with 2.x, then reads them back with 1.x. The one addition: a token
-pin also holds `ANTHROPIC_AUTH_TOKEN`, which Claude Code 2.1.312 needs ([why](#why-a-pin-holds-the-token-twice)).
+up with 1.x, uses them with 2.x, then reads them back with 1.x. The one addition: pins also
+hold `ANTHROPIC_AUTH_TOKEN`, which Claude Code 2.1.312 needs — the token for a token
+account, empty for `main` and after `off` ([why](#why-a-pin-holds-the-token-twice)). 1.x
+ignores that key.
 Pins made before have only the old key — run `claude-acc sync` once after upgrading;
 until then `ls` says how many are left, and `ls` and `usage` flag the one where you stand.
 
@@ -239,7 +241,9 @@ Two details follow from it:
 - **`off` and `main` leave `"ANTHROPIC_AUTH_TOKEN": ""` behind.** Measured: a running
   session keeps a token whose key is *removed* from the file, but drops one that is
   *emptied* — so emptying is what moves an open chat tab off the token account at once.
-  The next `off` removes the empty key.
+  Running `off` once more removes the empty key, and the file with it when nothing else is
+  left. In a workspace that shares one pin through links, `off` in one folder removes that
+  folder's link only.
 - **A repo that sets an `ANTHROPIC_AUTH_TOKEN` of its own** (a gateway key, say) is not
   pinned: the pin would have to replace it. `here` says so; `--all` skips that folder and
   pins the others; `off` and `main` leave such a key alone.

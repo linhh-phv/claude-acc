@@ -129,8 +129,9 @@ func resyncAcc(name, tok string) {
 		if r.dir == "" || !fsx.IsDir(r.dir) || r.acc != name {
 			continue
 		}
-		writeRepoPin(r.dir, name, tok)
-		n++
+		if tryPin(r.dir, name, tok) {
+			n++
+		}
 	}
 	if n > 0 {
 		ui.Info(ui.Dim + i18n.Tp("resync_done", strconv.Itoa(n)) + ui.Reset)

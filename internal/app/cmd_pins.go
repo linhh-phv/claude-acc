@@ -36,7 +36,9 @@ func cmdReassign(args []string) int {
 			ui.Info(ui.Yellow + i18n.Tp("git_skip", r.dir) + ui.Reset)
 			continue
 		}
-		writeRepoPin(r.dir, newAcc, tok)
+		if !tryPin(r.dir, newAcc, tok) {
+			continue
+		}
 		regSet(r.dir, newAcc)
 		ui.Info("  " + r.dir)
 		n++
@@ -83,12 +85,7 @@ func cmdSync(args []string) int {
 		}
 		// One broken file must not stop the rest: sync is how pins from an
 		// older claude-acc get the key Claude Code 2.1.312 needs.
-		if err := writeRepoPinErr(r.dir, r.acc, tok); err != nil {
-			msg := "err_write_repo"
-			if err == errForeignAuth {
-				msg = "err_foreign_auth"
-			}
-			ui.Info(ui.Red + i18n.Tp(msg, repoFile(r.dir)) + ui.Reset)
+		if !tryPin(r.dir, r.acc, tok) {
 			continue
 		}
 		// the global pin follows too, but is written once, below
