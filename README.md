@@ -118,7 +118,10 @@ everything 1.x set up, in the same places and formats:
 
 It also writes those files byte for byte as 1.x did, so going back to 1.x works too. Both
 directions are covered by a test (`TestUpgradeKeepsAccounts`) that sets accounts and pins
-up with 1.x, uses them with 2.x, then reads them back with 1.x.
+up with 1.x, uses them with 2.x, then reads them back with 1.x. The one addition: a token
+pin also holds `ANTHROPIC_AUTH_TOKEN`, which Claude Code 2.1.312 needs ([why](#why-a-pin-holds-the-token-twice)).
+Pins made before have only the old key — run `claude-acc sync` once after upgrading;
+until then `ls` and `usage` remind you under each one.
 
 ## Quick start
 
@@ -210,6 +213,38 @@ It writes the `env` block into that directory's `.claude/settings.local.json`, w
 overrides the global file. Existing contents are merged, not replaced — your
 `permissions` and MCP entries survive. Like `switch`, it takes effect on the next
 request, in chat tabs that are already open.
+
+### Why a pin holds the token twice
+
+Claude Code 2.1.312 stopped reading `CLAUDE_CODE_OAUTH_TOKEN` from repo settings: a pin
+holding only that key is silently dropped, and the chat runs on the global account.
+Measured on 2026-10-29 with a fake API logging which token arrives, then against the real
+API, on 2.1.300 and 2.1.312:
+
+| In `.claude/settings.local.json` | 2.1.300 | 2.1.312 |
+|---|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | used | **ignored** |
+| `ANTHROPIC_AUTH_TOKEN`, same token | used | used |
+
+`ANTHROPIC_AUTH_TOKEN` beats the global token, is re-read mid-session (change it between
+two turns and the second goes out on the new one), and the API bills it to the account's
+plan exactly as before — the same `anthropic-ratelimit-unified-5h/7d` headers come back.
+So a token pin carries both keys, with the same token. One thing differs: with no `model`
+set, Claude Code picks a different default model under `ANTHROPIC_AUTH_TOKEN` (measured:
+Opus instead of Sonnet). Set `model` if that matters to you.
+
+**What 2.1.312 cannot do: keep a directory on `main` while the global account is a token
+one.** A `main` pin is an empty token that hides the global one, and no repo-level setting
+hides it from 2.1.312. So with a token account as the global one, a directory pinned to
+`main` runs on that token account; `here`, `ls`, `usage` and `switch` say so. The way that
+works on every version: make `main` the global account, and pin token accounts to the repos
+that should not use it.
+
+```bash
+claude-acc switch main                       # main everywhere…
+cd other-repo && claude-acc switch work --here   # …except where you pin a token account
+claude-acc switch off --here                 # that repo back on main
+```
 
 When one account gets close to its limit, move everything on it at once:
 
@@ -474,6 +509,10 @@ Your `main` account never has this trade-off: it stays wherever Claude Code itse
 - **macOS and Windows.** No Linux build yet: Linux has no single credential store to rely on. The Windows build is untested on real hardware (see [Windows](#windows)).
 - **Only `main` gets claude.ai connectors, Remote Control, and `/schedule`.** Secondary accounts authenticate with a model-only OAuth token.
 - **Session/conversation history is shared** across accounts (`CLAUDE_CONFIG_DIR` isn't split per account), so `-r`/`--resume` under one account can see another's sessions.
+- **On Claude Code 2.1.312, a directory cannot be pinned to `main` while the global account
+  is a token one** — it runs on the token account. Keep `main` as the global account and pin
+  token accounts instead ([why](#why-a-pin-holds-the-token-twice)). Which release between
+  2.1.301 and 2.1.312 changed this is unknown: only those two were measured.
 - **A directory pin only works in that exact directory** (see above), and in a
   multi-root workspace the directory that counts is folder `[0]`, not the worktree you
   are looking at.

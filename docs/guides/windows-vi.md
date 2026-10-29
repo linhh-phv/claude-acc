@@ -66,6 +66,12 @@ claude-acc add cong-viec
 Đổi tài khoản là **có hiệu lực ngay** — không cần mở lại Cursor/VS Code, không cần mở tab
 chat mới.
 
+Muốn một repo dùng tài khoản **main** thì để main là tài khoản chung (`claude-acc switch
+main`), rồi ghim tài khoản phụ cho các repo khác. Claude Code từ bản 2.1.312 không cho một
+repo dùng main khi tài khoản chung đang là tài khoản phụ — claude-acc sẽ báo khi gặp trường
+hợp đó. Nếu `claude-acc ls` nhắc chạy `claude-acc sync` dưới một repo đã ghim (ghim làm từ
+bản claude-acc cũ), chạy lệnh đó một lần.
+
 Lưu ý: chỉ tài khoản **main** có claude.ai connectors và Remote Control; các tài khoản thêm
 bằng `add` dùng token, chạy Claude Code bình thường nhưng không có hai thứ đó.
 
