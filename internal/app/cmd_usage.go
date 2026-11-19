@@ -183,11 +183,11 @@ type useFirst struct {
 
 // spendBefore orders the accounts to use: the one whose 7-day window resets
 // soonest first, so its tokens are spent instead of lost at the reset; then
-// the one whose 5-hour window resets soonest. Resets are compared as the
-// table shows them — 7-day by whole hours left ("1 day 3h left"), 5-hour by
-// the minute ("13:40"): two accounts the table shows alike tie, and the next
-// step decides. When both resets match, the one with most room left, then by
-// name: what 1.x picked.
+// the one whose 5-hour window resets soonest. The 7-day resets tie when as
+// many whole hours are left ("1 day 3h left"), the 5-hour ones on the same
+// minute ("13:40"): to the second two accounts would never tie, leaving the
+// next step dead. When both resets match, the one with most room left, then
+// by name: what 1.x picked.
 func spendBefore(c []useFirst, now int64) {
 	key := func(ts int64) int64 {
 		if ts <= 0 {
