@@ -183,12 +183,12 @@ type useFirst struct {
 
 // spendBefore orders the accounts to use: the one whose 7-day window resets
 // soonest first, so its tokens are spent instead of lost at the reset; then
-// the one whose 5-hour window resets soonest. Resets are compared as finely
-// as the table shows them — 7-day by the hour ("1 day 3h left"), 5-hour by
-// the minute ("13:40"): to the second two accounts would never tie, leaving
-// the next step dead. When both resets match, the one with most room left,
-// then by name: what 1.x picked.
-func spendBefore(c []useFirst) {
+// the one whose 5-hour window resets soonest. Resets are compared as the
+// table shows them — 7-day by whole hours left ("1 day 3h left"), 5-hour by
+// the minute ("13:40"): two accounts the table shows alike tie, and the next
+// step decides. When both resets match, the one with most room left, then by
+// name: what 1.x picked.
+func spendBefore(c []useFirst, now int64) {
 	key := func(ts int64) int64 {
 		if ts <= 0 {
 			return 1<<62 + ts
@@ -197,7 +197,7 @@ func spendBefore(c []useFirst) {
 	}
 	sort.SliceStable(c, func(i, j int) bool {
 		a, b := c[i], c[j]
-		if h7a, h7b := floorDiv(key(a.r7), 3600), floorDiv(key(b.r7), 3600); h7a != h7b {
+		if h7a, h7b := floorDiv(key(a.r7)-now, 3600), floorDiv(key(b.r7)-now, 3600); h7a != h7b {
 			return h7a < h7b
 		}
 		if m5a, m5b := floorDiv(key(a.r5), 60), floorDiv(key(b.r5), 60); m5a != m5b {
@@ -300,7 +300,7 @@ func printUsage(names []string, res map[string]string) {
 	printWhere(w, globalAcc())
 
 	if len(best) > 1 {
-		spendBefore(best)
+		spendBefore(best, time.Now().Unix())
 		when, gap := resetAt(strconv.FormatInt(best[0].r7, 10), true)
 		switch {
 		case when == "": // the API left the reset out

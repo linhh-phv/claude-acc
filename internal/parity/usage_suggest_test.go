@@ -17,16 +17,23 @@ func TestUsageSuggestsSoonestReset(t *testing.T) {
 	specs := map[string]apiSpec{}
 	s := newSandbox(t, specs)
 	// The handler reads specs on each request, so the resets can hang off
-	// s.now. Two 7-day resets 35 minutes apart in the same clock hour tie.
-	hour := s.now.Truncate(time.Hour).Add(2 * 24 * time.Hour).Sub(s.now)
+	// s.now. The dates in the hint are local: one zone for test and binary.
+	s.extraEnv["TZ"] = "UTC"
 	ok := func(u5, u7 string, r5, r7 time.Duration) apiSpec {
 		return apiSpec{code: 200, status: [2]string{"allowed", "allowed"}, util: [2]string{u5, u7}, reset: [2]time.Duration{r5, r7}}
 	}
 	day := 24 * time.Hour
 	specs["tok-four"] = ok("0.1", "0.3", 1*time.Hour, 4*day+2*time.Hour)                           // the photo: suggested before
 	specs["tok-soon"] = ok("0.2", "0.45", 4*time.Hour+50*time.Minute, 27*time.Hour+30*time.Minute) // the photo: should be
-	specs["tok-early"] = ok("0.6", "0.6", 4*time.Hour, hour+5*time.Minute)
-	specs["tok-later"] = ok("0.1", "0.1", 1*time.Hour, hour+40*time.Minute)
+	// 7-day resets 35 minutes apart, both "2 days left": a tie the 5-hour
+	// reset breaks — against most room left, so neither step can stand in
+	// for the other.
+	specs["tok-early"] = ok("0.1", "0.1", 4*time.Hour, 2*day+5*time.Minute)
+	specs["tok-later"] = ok("0.6", "0.6", 1*time.Hour, 2*day+40*time.Minute)
+	// Same resets: most room left, then — same use too — the name.
+	specs["tok-mm"] = ok("0.1", "0.1", 3*time.Hour, 3*day)
+	specs["tok-aa"] = ok("0.2", "0.2", 3*time.Hour, 3*day)
+	specs["tok-zz"] = ok("0.2", "0.2", 3*time.Hour, 3*day)
 	specs["tok-out"] = apiSpec{code: 429, status: [2]string{"allowed", "rejected"}, util: [2]string{"0.3", "1.0"},
 		reset: [2]time.Duration{time.Hour, time.Hour}, reason: "Rate limited"}
 	specs["tok-full"] = apiSpec{code: 429, status: [2]string{"rejected", "allowed"}, util: [2]string{"1.0", "0.5"},
@@ -34,7 +41,7 @@ func TestUsageSuggestsSoonestReset(t *testing.T) {
 	specs["tok-warn"] = apiSpec{code: 200, status: [2]string{"allowed", "allowed_warning"}, util: [2]string{"0.4", "0.97"},
 		reset: [2]time.Duration{2 * time.Hour, 20 * time.Hour}}
 
-	date := func(d time.Duration) string { return s.now.Add(d).Format("02/01") }
+	date := func(d time.Duration) string { return s.now.Add(d).UTC().Format("02/01") }
 	cases := []struct {
 		name, lang string
 		accounts   []string
@@ -45,7 +52,11 @@ func TestUsageSuggestsSoonestReset(t *testing.T) {
 		{name: "in Vietnamese", lang: "vi_VN.UTF-8", accounts: []string{"four", "soon"},
 			want: "Dùng trước cho hết: soon (7 ngày reset sớm nhất: " + date(27*time.Hour+30*time.Minute) + ", còn 1 ngày 3h; đã dùng 45%)"},
 		{name: "7-day resets in one hour: the 5-hour reset decides", accounts: []string{"four", "early", "later"},
-			want: "Use up first: later (7-day window resets soonest: " + date(hour+40*time.Minute) + ", "},
+			want: "Use up first: later (7-day window resets soonest: " + date(2*day+40*time.Minute) + ", 2 days left; 60% used)"},
+		{name: "both resets alike: most room left", accounts: []string{"four", "aa", "mm", "zz"},
+			want: "Use up first: mm ("},
+		{name: "both resets and use alike: the name", accounts: []string{"four", "zz", "aa"},
+			want: "Use up first: aa ("},
 		{name: "out of 7-day or 5-hour quota: skipped however soon", accounts: []string{"four", "soon", "out", "full"},
 			want: "Use up first: soon ("},
 		{name: "near the 7-day ceiling but not out: still first", accounts: []string{"four", "soon", "warn"},

@@ -370,8 +370,8 @@ Use up first: main (7-day window resets soonest: 05/09, 9h52 left; 19% used)
 ```
 
 The hint names the usable account whose **7-day window resets soonest**: whatever it has
-left is lost at the reset, so spend it first. When two 7-day resets fall in the same hour,
-the 5-hour window that resets soonest decides, then the account with most room left. An
+left is lost at the reset, so spend it first. When two 7-day windows have the same whole
+hours left, the 5-hour window that resets soonest decides, then the account with most room left. An
 account that is out — of its 7-day or its 5-hour quota — is never suggested; one past the
 warning line but not out still is.
 
