@@ -21,7 +21,7 @@ func whereOf(out string) []string {
 
 // TestUsageSaysWhatIsInEffectHere: `usage` tells which account is in effect
 // where you stand, with the very rows `ls` prints there, between its table
-// and the "Most headroom" hint. 1.x usage had none (see hereInUsage).
+// and the "Use up first" hint. 1.x usage had none (see hereInUsage).
 func TestUsageSaysWhatIsInEffectHere(t *testing.T) {
 	goBin, _ := binaries(t)
 	s := newSandbox(t, apiSpecs)
@@ -87,7 +87,7 @@ func TestUsageSaysWhatIsInEffectHere(t *testing.T) {
 			if table < 0 || here < table {
 				t.Errorf("rows are not under the table:\n%s", u.stdout)
 			}
-			if hint := strings.Index(u.stdout, "Most headroom:"); hint >= 0 && hint < here {
+			if hint := strings.Index(u.stdout, "Use up first:"); hint >= 0 && hint < here {
 				t.Errorf("rows come after the hint:\n%s", u.stdout)
 			}
 		})

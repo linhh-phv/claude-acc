@@ -130,6 +130,9 @@ type apiSpec struct {
 	status [2]string // 5h, 7d status header
 	util   [2]string // 5h, 7d utilization
 	reason string    // error.message in the body
+	// reset: 5h, 7d reset times from now; zero is the shared default
+	// (3h30m50s, 4 days 5h), which keeps 1.x and 2.x output comparable.
+	reset [2]time.Duration
 }
 
 func newSandbox(t *testing.T, specs map[string]apiSpec) *sandbox {
@@ -155,10 +158,17 @@ func newSandbox(t *testing.T, specs map[string]apiSpec) *sandbox {
 		if sp.status[0] != "" {
 			h := w.Header()
 			h.Set("anthropic-ratelimit-unified-5h-utilization", sp.util[0])
-			h.Set("anthropic-ratelimit-unified-5h-reset", strconv.FormatInt(reset5, 10))
+			r5, r7 := reset5, reset7
+			if sp.reset[0] != 0 {
+				r5 = s.now.Add(sp.reset[0]).Unix()
+			}
+			if sp.reset[1] != 0 {
+				r7 = s.now.Add(sp.reset[1]).Unix()
+			}
+			h.Set("anthropic-ratelimit-unified-5h-reset", strconv.FormatInt(r5, 10))
 			h.Set("anthropic-ratelimit-unified-5h-status", sp.status[0])
 			h.Set("anthropic-ratelimit-unified-7d-utilization", sp.util[1])
-			h.Set("anthropic-ratelimit-unified-7d-reset", strconv.FormatInt(reset7, 10))
+			h.Set("anthropic-ratelimit-unified-7d-reset", strconv.FormatInt(r7, 10))
 			h.Set("anthropic-ratelimit-unified-7d-status", sp.status[1])
 		}
 		w.Header().Set("content-type", "application/json")

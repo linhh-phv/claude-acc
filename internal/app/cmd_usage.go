@@ -136,22 +136,31 @@ func saveUsageCache(names []string, res map[string]string) {
 
 // whenLeft renders a reset time: "13:40 (3h33 left)" / "11/09 (6 days left)".
 func whenLeft(ts string, withDate bool) string {
+	when, gap := resetAt(ts, withDate)
+	if gap == "" {
+		return when
+	}
+	return when + " (" + i18n.Tp("usg_left", gap) + ")"
+}
+
+// resetAt splits a reset time into "13:40" / "11/09" and the time left until
+// it, "3h33" / "6 days" — empty once it has passed.
+func resetAt(ts string, withDate bool) (when, gap string) {
 	n, ok := pyInt(ts)
 	if !ok || n <= 0 {
-		return ""
+		return "", ""
 	}
 	left := n - time.Now().Unix()
 	t := time.Unix(n, 0)
-	when := t.Format("15:04")
+	when = t.Format("15:04")
 	if withDate {
 		when = t.Format("02/01")
 	}
 	if left <= 0 {
-		return when
+		return when, ""
 	}
 	d, rem := floorDiv(left, 86400), left%86400
 	h, m := floorDiv(rem/60, 60), (rem/60)%60
-	var gap string
 	switch {
 	case d >= 2:
 		gap = i18n.Tp("usg_days", strconv.FormatInt(d, 10))
@@ -162,7 +171,43 @@ func whenLeft(ts string, withDate bool) string {
 	default:
 		gap = fmt.Sprintf("%dm", m)
 	}
-	return when + " (" + i18n.Tp("usg_left", gap) + ")"
+	return when, gap
+}
+
+// useFirst is an account `usage` may suggest: one usable right now.
+type useFirst struct {
+	name     string
+	r7, r5   int64   // reset times, unix seconds; never-known ones sort last
+	u7, used float64 // 7-day use; use of the busier window
+}
+
+// spendBefore orders the accounts to use: the one whose 7-day window resets
+// soonest first, so its tokens are spent instead of lost at the reset; then
+// the one whose 5-hour window resets soonest. Resets are compared as finely
+// as the table shows them — 7-day by the hour ("1 day 3h left"), 5-hour by
+// the minute ("13:40"): to the second two accounts would never tie, leaving
+// the next step dead. When both resets match, the one with most room left,
+// then by name: what 1.x picked.
+func spendBefore(c []useFirst) {
+	key := func(ts int64) int64 {
+		if ts <= 0 {
+			return 1<<62 + ts
+		}
+		return ts
+	}
+	sort.SliceStable(c, func(i, j int) bool {
+		a, b := c[i], c[j]
+		if h7a, h7b := floorDiv(key(a.r7), 3600), floorDiv(key(b.r7), 3600); h7a != h7b {
+			return h7a < h7b
+		}
+		if m5a, m5b := floorDiv(key(a.r5), 60), floorDiv(key(b.r5), 60); m5a != m5b {
+			return m5a < m5b
+		}
+		if a.used != b.used {
+			return a.used < b.used
+		}
+		return a.name < b.name
+	})
 }
 
 func printUsage(names []string, res map[string]string) {
@@ -190,11 +235,7 @@ func printUsage(names []string, res map[string]string) {
 	fmt.Fprintf(w, "%s  %s %s %s%s\n", Y, padRight(i18n.T("usg_hdr_acc"), 10),
 		padRight(i18n.T("usg_hdr_5h"), 30), i18n.T("usg_hdr_7d"), Z)
 
-	type cand struct {
-		worst float64
-		name  string
-	}
-	var best []cand
+	var best []useFirst
 	for _, name := range names {
 		f := strings.Split(res[name], "\t")
 		if f[0] != "OK" || len(f) < 7 {
@@ -247,9 +288,9 @@ func printUsage(names []string, res map[string]string) {
 		}
 		fmt.Fprintf(w, " %s %s %s %s\n", mark, padRight(name, 10), padVisible(five, 30), seven)
 		if ok {
-			// Ranked by the busier window: plenty of 5h left means little if
-			// the 7-day window is about to hit its ceiling.
-			best = append(best, cand{max(pctOr0(u5), pctOr0(u7)), name})
+			t7, _ := pyInt(r7)
+			t5, _ := pyInt(r5)
+			best = append(best, useFirst{name, t7, t5, pctOr0(u7), max(pctOr0(u5), pctOr0(u7))})
 		}
 	}
 
@@ -259,14 +300,16 @@ func printUsage(names []string, res map[string]string) {
 	printWhere(w, globalAcc())
 
 	if len(best) > 1 {
-		sort.SliceStable(best, func(i, j int) bool {
-			if best[i].worst != best[j].worst {
-				return best[i].worst < best[j].worst
-			}
-			return best[i].name < best[j].name
-		})
+		spendBefore(best)
+		when, gap := resetAt(strconv.FormatInt(best[0].r7, 10), true)
+		switch {
+		case when == "": // the API left the reset out
+			when = "?"
+		case gap != "":
+			when += ", " + i18n.Tp("usg_left", gap)
+		}
 		fmt.Fprintf(w, "\n%s%s %s%s%s%s\n", D, i18n.T("usg_most"), Z, best[0].name, D,
-			i18n.Tp("usg_most2", strconv.Itoa(pyRound(best[0].worst*100))))
+			i18n.Tp("usg_most2", when, strconv.Itoa(pyRound(best[0].u7*100))))
 		fmt.Fprintf(w, "%s%s\n", i18n.Tp("usg_most3", best[0].name), Z)
 	}
 }

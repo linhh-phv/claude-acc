@@ -203,7 +203,7 @@ func TestUsageAndRm(t *testing.T) {
 	s.addAccount("play", tokPlay)
 	u := s.ok(s.w, "", "usage").stdout
 	// HERE: the account in effect where usage runs, as ls prints it.
-	for _, x := range []string{"main", "work", "play", "Most headroom:", "HERE      main  (no pin here"} {
+	for _, x := range []string{"main", "work", "play", "Use up first:", "HERE      main  (no pin here"} {
 		want(t, u, x)
 	}
 	want(t, s.read(filepath.Join(s.appdata, "claude-acc", "usage-cache")), "work\t")

@@ -348,9 +348,9 @@ var scenarios = []scenario{
 		s.token("err", "tok-500")
 		s.usageCache("zed\t1\t0.1\t1\tallowed\t0.1\t1\tallowed", "work\t1\t0.9\t1\tallowed\t0.9\t1\tallowed")
 		return s.w
-	}, fix: hereInUsage},
-	{name: "usage-vi", lang: "vi_VN.UTF-8", args: []string{"quota", "play", "work"}, setup: func(s *sandbox) string { std(s); return s.w }, fix: hereInUsage},
-	{name: "usage-one", args: []string{"usage", "work"}, setup: func(s *sandbox) string { std(s); return s.w }, fix: hereInUsage},
+	}, fix: usageFix},
+	{name: "usage-vi", lang: "vi_VN.UTF-8", args: []string{"quota", "play", "work"}, setup: func(s *sandbox) string { std(s); return s.w }, fix: usageFix},
+	{name: "usage-one", args: []string{"usage", "work"}, setup: func(s *sandbox) string { std(s); return s.w }, fix: usageFix},
 	{name: "usage-flag", args: []string{"usage", "-x"}, setup: func(s *sandbox) string { std(s); return s.w }},
 	{name: "usage-unknown", args: []string{"usage", "ghost"}, setup: func(s *sandbox) string { std(s); return s.w }},
 
@@ -466,6 +466,26 @@ func hereInUsage(b, g *result) {
 		return
 	}
 	g.stdout = whereRows.ReplaceAllString(g.stdout, "\n")
+}
+
+// hints matches the line naming the account `usage` suggests, 1.x and 2.x
+// labels, both languages.
+var hints = regexp.MustCompile(`(?m)^.*(?:Most headroom:|Còn nhiều nhất:|Use up first:|Dùng trước cho hết:).*\n`)
+
+// suggestByReset: 2.x suggests the account whose 7-day window resets
+// soonest (TestUsageSuggestsSoonestReset); 1.x, the one with most room left.
+// The fake API gives every account the same resets, where 2.x falls back on
+// the 1.x choice — so the label line goes, and the "switch <name> --here"
+// line under it still has to match.
+func suggestByReset(b, g *result) {
+	b.stdout = hints.ReplaceAllString(b.stdout, "(hint)\n")
+	g.stdout = hints.ReplaceAllString(g.stdout, "(hint)\n")
+}
+
+// usageFix is the fix of the usage scenarios.
+func usageFix(b, g *result) {
+	hereInUsage(b, g)
+	suggestByReset(b, g)
 }
 
 // pinWarnings matches the lines 2.x prints under a pin Claude Code 2.1.312
