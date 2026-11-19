@@ -68,6 +68,10 @@ func (s *sandbox) runPty(bin []string, cwd string, args []string, lang string, s
 		"PWD=" + cwd, "TERM=xterm-256color", "USER=t",
 		"FAKE_KC=" + s.kc, "FAKE_LOG=" + s.tmp + "/claude.log", "FAKE_CLIP=" + s.tmp + "/clip",
 		"FAKE_OPEN_LOG=" + s.tmp + "/open.log", "CLAUDE_ACC_API_URL=" + s.api.URL,
+		// The python3 the bash version runs may cache bytecode under
+		// $HOME/Library/Caches (macOS's /usr/bin/python3 does): files only
+		// one side writes, which would read as a difference in behaviour.
+		"PYTHONDONTWRITEBYTECODE=1",
 	}
 	for k, v := range s.extraEnv {
 		env = append(env, k+"="+v)

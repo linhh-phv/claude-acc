@@ -265,6 +265,10 @@ func (s *sandbox) run(bin []string, cwd string, args []string, stdin string, lan
 		"PWD=" + cwd, "TERM=dumb", "USER=t",
 		"FAKE_KC=" + s.kc, "FAKE_LOG=" + filepath.Join(s.tmp, "claude.log"),
 		"CLAUDE_ACC_API_URL=" + s.api.URL,
+		// The python3 the bash version runs may cache bytecode under
+		// $HOME/Library/Caches (macOS's /usr/bin/python3 does): files only
+		// one side writes, which would read as a difference in behaviour.
+		"PYTHONDONTWRITEBYTECODE=1",
 	}
 	for k, v := range s.extraEnv {
 		env = append(env, k+"="+v)
